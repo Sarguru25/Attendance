@@ -12,15 +12,20 @@ export default function PermissionClient() {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth() + 1;
 
+  const [compensatePerm, setCompensatePerm] = useState<any>(null);
+
+  const compDate = compensatePerm ? new Date(compensatePerm.date) : currentDate;
+  const compYear = compDate.getFullYear();
+  const compMonth = compDate.getMonth() + 1;
+
   const { data: balanceData, mutate: mutateBalance } = useSWR(`/api/employee/permissions/balance?year=${year}&month=${month}`, fetcher);
   const { data: permData, mutate: mutatePerms } = useSWR(`/api/employee/permissions`, fetcher);
-  const { data: attData, mutate: mutateAtts } = useSWR(`/api/employee/permissions/attendance-for-compensation?year=${year}&month=${month}`, fetcher);
+  const { data: attData, mutate: mutateAtts } = useSWR(`/api/employee/permissions/attendance-for-compensation?year=${compYear}&month=${compMonth}`, fetcher);
 
   const [isApplying, setIsApplying] = useState(false);
   const [formData, setFormData] = useState({ date: '', fromTime: '', toTime: '', reason: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [compensatePerm, setCompensatePerm] = useState<any>(null);
   const [selectedCompensations, setSelectedCompensations] = useState<{ [id: string]: number }>({});
   const [isCompensating, setIsCompensating] = useState(false);
 
@@ -75,7 +80,7 @@ export default function PermissionClient() {
     })).filter(c => c.usedMinutes > 0);
 
     if (compsArray.length === 0) return alert('Invalid selection. Select at least one attendance record.');
-    
+
     setIsCompensating(true);
     try {
       const res = await fetch(`/api/employee/permissions/${compensatePerm._id}/compensate`, {
@@ -162,18 +167,17 @@ export default function PermissionClient() {
                   <td className="px-4 py-3 font-bold">{formatMins(p.duration)}</td>
                   <td className="px-4 py-3">{p.reason}</td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                      p.status === 'Approved' || p.status === 'Fully Compensated' ? 'bg-success/10 text-success' :
-                      p.status === 'Pending Approval' ? 'bg-warning/10 text-warning' :
-                      p.status === 'Rejected' ? 'bg-destructive/10 text-destructive' :
-                      'bg-primary/10 text-primary'
-                    }`}>
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${p.status === 'Approved' || p.status === 'Fully Compensated' ? 'bg-success/10 text-success' :
+                        p.status === 'Pending Approval' ? 'bg-warning/10 text-warning' :
+                          p.status === 'Rejected' ? 'bg-destructive/10 text-destructive' :
+                            'bg-primary/10 text-primary'
+                      }`}>
                       {p.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     {(p.status === 'Pending Compensation' || p.status === 'Partially Compensated') && (
-                      <button 
+                      <button
                         onClick={() => setCompensatePerm(p)}
                         className="text-primary hover:underline font-bold text-xs"
                       >
@@ -206,16 +210,16 @@ export default function PermissionClient() {
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-muted-foreground mb-1">Date</label>
-                <input type="date" required className="w-full border border-border rounded-xl px-3 py-2 bg-background" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                <input type="date" required className="w-full border border-border rounded-xl px-3 py-2 bg-background" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground mb-1">From Time</label>
-                  <input type="time" required className="w-full border border-border rounded-xl px-3 py-2 bg-background" value={formData.fromTime} onChange={e => setFormData({...formData, fromTime: e.target.value})} />
+                  <input type="time" required className="w-full border border-border rounded-xl px-3 py-2 bg-background" value={formData.fromTime} onChange={e => setFormData({ ...formData, fromTime: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground mb-1">To Time</label>
-                  <input type="time" required className="w-full border border-border rounded-xl px-3 py-2 bg-background" value={formData.toTime} onChange={e => setFormData({...formData, toTime: e.target.value})} />
+                  <input type="time" required className="w-full border border-border rounded-xl px-3 py-2 bg-background" value={formData.toTime} onChange={e => setFormData({ ...formData, toTime: e.target.value })} />
                 </div>
               </div>
               <div className="bg-muted p-3 rounded-xl flex justify-between items-center text-sm">
@@ -224,7 +228,7 @@ export default function PermissionClient() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-muted-foreground mb-1">Reason</label>
-                <textarea required rows={2} className="w-full border border-border rounded-xl px-3 py-2 bg-background" value={formData.reason} onChange={e => setFormData({...formData, reason: e.target.value})}></textarea>
+                <textarea required rows={2} className="w-full border border-border rounded-xl px-3 py-2 bg-background" value={formData.reason} onChange={e => setFormData({ ...formData, reason: e.target.value })}></textarea>
               </div>
               <button disabled={isSubmitting || calculatedDuration > balance.remainingMinutes} type="submit" className="w-full py-2 bg-primary text-primary-foreground font-bold rounded-xl disabled:opacity-50">
                 {isSubmitting ? 'Submitting...' : 'Submit Request'}
@@ -258,9 +262,9 @@ export default function PermissionClient() {
                       <div key={att._id} className={`flex flex-col p-3 border rounded-xl transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
                         <label className="flex items-center justify-between cursor-pointer w-full">
                           <div className="flex items-center gap-3">
-                            <input 
-                              type="checkbox" 
-                              checked={isSelected} 
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
                               onChange={(e) => {
                                 const newComps = { ...selectedCompensations };
                                 if (e.target.checked) {
@@ -276,8 +280,8 @@ export default function PermissionClient() {
                                   delete newComps[att._id];
                                 }
                                 setSelectedCompensations(newComps);
-                              }} 
-                              className="text-primary rounded focus:ring-primary h-4 w-4" 
+                              }}
+                              className="text-primary rounded focus:ring-primary h-4 w-4"
                             />
                             <div>
                               <div className="font-bold">{format(new Date(att.date), 'dd MMM yyyy')}</div>
@@ -291,17 +295,17 @@ export default function PermissionClient() {
                         {isSelected && (
                           <div className="mt-3 pl-7 flex items-center justify-between gap-4">
                             <span className="text-xs font-semibold text-muted-foreground">Allocate Mins:</span>
-                            <input 
-                              type="number" 
-                              required 
-                              min={1} 
+                            <input
+                              type="number"
+                              required
+                              min={1}
                               max={Math.min(compensatePerm.pendingMinutes, att.availableExtraMinutes)}
-                              className="w-24 border border-border rounded-lg px-2 py-1 bg-background text-sm font-bold focus:ring-1 focus:ring-primary focus:outline-none" 
-                              value={selectedCompensations[att._id] || ''} 
+                              className="w-24 border border-border rounded-lg px-2 py-1 bg-background text-sm font-bold focus:ring-1 focus:ring-primary focus:outline-none"
+                              value={selectedCompensations[att._id] || ''}
                               onChange={e => {
                                 const val = Number(e.target.value);
                                 setSelectedCompensations(prev => ({ ...prev, [att._id]: val }));
-                              }} 
+                              }}
                             />
                           </div>
                         )}
@@ -315,17 +319,17 @@ export default function PermissionClient() {
                   )}
                 </div>
               </div>
-              
+
               <div className="flex justify-between items-center text-sm font-bold bg-muted/30 p-3 rounded-xl border border-border">
                 <span>Total Allocated:</span>
                 <span className={Object.values(selectedCompensations).reduce((a, b) => a + b, 0) > compensatePerm.pendingMinutes ? 'text-destructive' : 'text-primary'}>
                   {formatMins(Object.values(selectedCompensations).reduce((a, b) => a + b, 0))} / {formatMins(compensatePerm.pendingMinutes)}
                 </span>
               </div>
-              
-              <button 
-                type="submit" 
-                disabled={isCompensating || Object.values(selectedCompensations).reduce((a, b) => a + b, 0) <= 0 || Object.values(selectedCompensations).reduce((a, b) => a + b, 0) > compensatePerm.pendingMinutes} 
+
+              <button
+                type="submit"
+                disabled={isCompensating || Object.values(selectedCompensations).reduce((a, b) => a + b, 0) <= 0 || Object.values(selectedCompensations).reduce((a, b) => a + b, 0) > compensatePerm.pendingMinutes}
                 className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {isCompensating ? 'Processing...' : 'Confirm Compensation'}
