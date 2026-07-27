@@ -118,50 +118,76 @@ export async function POST(req: NextRequest) {
       let halfDays = 0;
       let paidLeaveDays = 0;
       let unpaidLeaveDays = 0;
-      let explicitAbsent = 0;
+      let absentDays = 0;
+      let extraWorkedDays = 0;
+      let compOffsTaken = 0;
 
-      attendances.forEach(a => {
-        if (['present', 'late', 'Work From Home', 'On Duty'].includes(a.status)) presentDays++;
-        if (a.status === 'half-day') halfDays++;
-        if (a.status === 'absent') explicitAbsent++;
-      });
+      daysInMonth.forEach(d => {
+        const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
+        const isWeeklyOff = !workingDaysPattern.includes(dayName);
+        const isHoliday = holidays.some(h => isSameDay(new Date(h.date), d));
+        const isWorkingDay = !isWeeklyOff && !isHoliday;
 
-      // Process leaves to count paid and unpaid leave days within this month
-      leaves.forEach(l => {
-        const from = new Date(Math.max(l.fromDate.getTime(), startDate.getTime()));
-        const to = new Date(Math.min(l.toDate.getTime(), endDate.getTime()));
-        
-        let daysInMonth = 0;
-        let currentDate = new Date(from);
-        while (currentDate <= to) {
-          const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(currentDate);
-          const isWeeklyOff = !workingDaysPattern.includes(dayName);
-          const isHoliday = holidays.some(h => isSameDay(new Date(h.date), currentDate));
-          
-          if (!isWeeklyOff && !isHoliday) {
-            daysInMonth++;
+        const att = attendances.find(a => isSameDay(new Date(a.date), d));
+        const leaveForDay = leaves.find(l => {
+          const from = new Date(l.fromDate);
+          const to = new Date(l.toDate);
+          from.setHours(0,0,0,0);
+          to.setHours(23,59,59,999);
+          return d >= from && d <= to;
+        });
+
+        if (att) {
+          if (['present', 'late', 'Work From Home', 'On Duty'].includes(att.status)) presentDays++;
+          if (att.status === 'half-day') halfDays++;
+        }
+
+        if (isWorkingDay) {
+          if (leaveForDay) {
+            if (leaveForDay.duration === 'half_day') {
+               if (leaveForDay.leaveType === 'Leave Without Pay') {
+                 unpaidLeaveDays += 0.5;
+               } else {
+                 paidLeaveDays += 0.5;
+               }
+               if (leaveForDay.leaveType === 'Compensatory Off') {
+                 compOffsTaken += 0.5;
+               }
+               if (!att || att.status === 'absent') {
+                  absentDays += 0.5;
+               }
+            } else {
+               if (leaveForDay.leaveType === 'Leave Without Pay') {
+                 unpaidLeaveDays += 1;
+               } else {
+                 paidLeaveDays += 1;
+               }
+               if (leaveForDay.leaveType === 'Compensatory Off') {
+                 compOffsTaken += 1;
+               }
+            }
+          } else {
+            if (att) {
+              if (att.status === 'absent') {
+                absentDays++;
+              } else if (att.status === 'half-day') {
+                absentDays += 0.5;
+              }
+            } else {
+              absentDays++;
+            }
           }
-          currentDate.setDate(currentDate.getDate() + 1);
-        }
-
-        if (l.duration === 'half_day') {
-          daysInMonth = 0.5;
-        }
-
-        if (l.leaveType === 'Leave Without Pay') {
-          unpaidLeaveDays += daysInMonth;
         } else {
-          paidLeaveDays += daysInMonth;
+          // If it's a Weekly Off or Holiday and they worked
+          if (att) {
+            if (['present', 'late', 'Work From Home', 'On Duty'].includes(att.status)) {
+              extraWorkedDays++;
+            } else if (att.status === 'half-day') {
+              extraWorkedDays += 0.5;
+            }
+          }
         }
       });
-
-      // Calculate absent days based on punches vs working days
-      // If employee didn't punch on a working day (and no leave/holiday/weekly off), they are absent
-      const actualPunches = presentDays + (halfDays * 0.5) + paidLeaveDays + unpaidLeaveDays + explicitAbsent;
-      let missingPunches = totalWorkingDays - actualPunches;
-      if (missingPunches < 0) missingPunches = 0;
-
-      const absentDays = explicitAbsent + missingPunches;
 
       const monthlySalary = user.monthlySalary || 0;
       const perDaySalary = monthlySalary / totalCalendarDays; 
@@ -169,7 +195,12 @@ export async function POST(req: NextRequest) {
       // Deduction = Absent Days + Unpaid Leave Days (Paid leaves do not deduct from salary)
       const deductionDays = absentDays + unpaidLeaveDays;
       let deductionAmount = deductionDays * perDaySalary;
-      const paidDays = totalCalendarDays - deductionDays;
+
+      // Calculate extra pay for unconsumed compensatory off days worked in this month
+      const payableExtraDays = Math.max(0, extraWorkedDays - compOffsTaken);
+      const extraPayAmount = payableExtraDays * perDaySalary;
+
+      const paidDays = totalCalendarDays - deductionDays + payableExtraDays;
       const leaveDays = paidLeaveDays + unpaidLeaveDays;
 
       // New: Salary Deductions
@@ -222,7 +253,8 @@ export async function POST(req: NextRequest) {
       } // End if (user.role !== 'intern')
 
       deductionAmount += esiDeduction + hraDeduction + loanDeduction;
-      const netSalary = monthlySalary - deductionAmount;
+      const grossSalary = monthlySalary + extraPayAmount;
+      const netSalary = grossSalary - deductionAmount;
 
       // Upsert payroll
       const payroll = await Payroll.findOneAndUpdate(

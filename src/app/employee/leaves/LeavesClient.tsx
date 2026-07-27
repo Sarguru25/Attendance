@@ -241,7 +241,6 @@ export default function EmployeeLeavesClient() {
                     <input
                       type="date"
                       required
-                      min={format(new Date(), 'yyyy-MM-dd')}
                       className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors min-h-[44px]"
                       value={formData.fromDate}
                       onChange={(e) => {
@@ -260,7 +259,7 @@ export default function EmployeeLeavesClient() {
                       type="date"
                       required
                       disabled={formData.duration === 'half_day' || formData.duration === 'full_day'}
-                      min={formData.fromDate || format(new Date(), 'yyyy-MM-dd')}
+                      min={formData.fromDate || undefined}
                       className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors disabled:opacity-50 min-h-[44px]"
                       value={formData.duration === 'half_day' || formData.duration === 'full_day' ? formData.fromDate : formData.toDate}
                       onChange={(e) => setFormData({...formData, toDate: e.target.value})}
