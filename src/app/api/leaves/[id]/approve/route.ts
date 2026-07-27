@@ -52,8 +52,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         const nextDay = new Date(queryDate);
         nextDay.setDate(nextDay.getDate() + 1);
 
+        const leaveUser = leave.userId as any;
+
         const existingAttendance = await Attendance.findOne({
-          userId: leave.userId._id,
+          userId: leaveUser._id,
           date: { $gte: queryDate, $lt: nextDay }
         });
 
@@ -64,8 +66,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           await existingAttendance.save();
         } else {
           await Attendance.create({
-            userId: leave.userId._id,
-            companyId: leave.userId.companyId,
+            userId: leaveUser._id,
+            companyId: leaveUser.companyId,
             date: queryDate,
             status: newStatus,
             sessions: []
