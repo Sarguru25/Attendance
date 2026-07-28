@@ -7,6 +7,7 @@ import Leave from '@/models/Leave';
 import '@/models/Shift'; 
 import Holiday from '@/models/Holiday';
 import { getActiveSessionInfo } from '@/lib/sessionUtils';
+import { isSameDay } from 'date-fns';
 
 export async function GET() {
   try {
@@ -49,11 +50,18 @@ export async function GET() {
       holidayType: { $in: ['public', 'company'] }
     });
     
+    const shiftWorkingDays = user?.shiftId?.workingDays?.map((d: string) => d.toLowerCase()) || 
+      ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
     let workingDays = 0;
     for (let d = new Date(firstDayOfMonth); d <= today; d.setDate(d.getDate() + 1)) {
-      if (d.getDay() !== 0) { // Only exclude Sunday
+      const dayName = daysOfWeek[d.getDay()];
+      
+      if (shiftWorkingDays.includes(dayName)) {
         // Check if day is a holiday
-        const isHoliday = holidaysThisMonth.some(h => new Date(h.date).getTime() === d.getTime());
+        const isHoliday = holidaysThisMonth.some(h => isSameDay(new Date(h.date), d));
         if (!isHoliday) {
           workingDays++;
         }
