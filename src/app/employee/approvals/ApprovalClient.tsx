@@ -135,6 +135,14 @@ export default function ApprovalClient() {
             <p className="text-sm text-muted-foreground">Date: {format(new Date(req.fromDate), 'MMM dd')} - {format(new Date(req.toDate), 'MMM dd, yyyy')}</p>
           </>
         );
+      case 'PERMISSION':
+        return (
+          <>
+            <p className="text-sm text-card-foreground">Permission ({req.duration} mins)</p>
+            <p className="text-sm text-muted-foreground">Date: {format(new Date(req.date), 'MMM dd, yyyy')}</p>
+            <p className="text-sm text-muted-foreground">Time: {req.fromTime} to {req.toTime}</p>
+          </>
+        );
       default:
         return null;
     }

@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
         recipientId: currentApprover,
         type: 'PERMISSION_REQUEST',
         message: `${session.user.name} has requested a permission for ${duration} minutes on ${permissionDate.toLocaleDateString()}.`,
-        link: '/admin/permissions',
+        link: '/employee/approvals',
         companyId: session.user.companyId
       });
     }

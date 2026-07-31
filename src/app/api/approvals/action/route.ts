@@ -8,6 +8,7 @@ import OvertimeRequest from '@/models/OvertimeRequest';
 import WFHRequest from '@/models/WFHRequest';
 import ApprovalAuditLog from '@/models/ApprovalAuditLog';
 import Notification from '@/models/Notification';
+import Permission from '@/models/Permission';
 import Attendance from '@/models/Attendance';
 import User from '@/models/User';
 
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
       case 'ATTENDANCE_CORRECTION': ModelType = AttendanceCorrection; break;
       case 'OVERTIME': ModelType = OvertimeRequest; break;
       case 'WFH': ModelType = WFHRequest; break;
+      case 'PERMISSION': ModelType = Permission; break;
       default: return NextResponse.json({ error: 'Invalid requestType' }, { status: 400 });
     }
 
@@ -44,7 +46,7 @@ export async function POST(req: NextRequest) {
 
     // Permissions check
     const isAdmin = ['admin', 'super_admin', 'company_admin'].includes(session.user.role);
-    const approverField = requestType === 'LEAVE' ? request.currentApprover : request.approverId;
+    const approverField = (requestType === 'LEAVE' || requestType === 'PERMISSION') ? request.currentApprover : request.approverId;
     const isApprover = approverField?.toString() === userId;
 
     if (!isAdmin && !isApprover) {
@@ -52,9 +54,9 @@ export async function POST(req: NextRequest) {
     }
 
     const previousStatus = request.status;
-    request.status = status;
+    request.status = requestType === 'PERMISSION' ? (status === 'approved' ? 'Approved' : 'Rejected') : status;
 
-    if (requestType === 'LEAVE') {
+    if (requestType === 'LEAVE' || requestType === 'PERMISSION') {
       request.approvedBy = userId;
     } else if (status === 'approved' && (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION')) {
       if (finalCheckIn) request.requestedCheckIn = new Date(finalCheckIn);
@@ -142,7 +144,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    employeeId = requestType === 'LEAVE' ? request.userId : request.employeeId;
+    employeeId = (requestType === 'LEAVE' || requestType === 'PERMISSION') ? request.userId : request.employeeId;
 
     await ApprovalAuditLog.create({
       requestId: request._id,
