@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { format, subMonths, isSameDay } from 'date-fns';
 import { Clock, Calendar as CalendarIcon, Filter, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
@@ -51,6 +51,14 @@ export default function EmployeeAttendanceClient() {
   const [reqCheckOut, setReqCheckOut] = useState('');
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isModalOpen && data?.user?.shiftId?.sessions?.length > 0) {
+      const sessions = [...data.user.shiftId.sessions].sort((a: any, b: any) => a.order - b.order);
+      if (!reqCheckIn) setReqCheckIn(sessions[0].startTime);
+      if (!reqCheckOut) setReqCheckOut(sessions[sessions.length - 1].endTime);
+    }
+  }, [isModalOpen, data]);
 
   const handleSubmitRequest = async (e: React.FormEvent) => {
     e.preventDefault();

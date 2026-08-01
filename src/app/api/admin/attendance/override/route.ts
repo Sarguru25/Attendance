@@ -318,11 +318,34 @@ export async function POST(req: NextRequest) {
       }
       const availableExtraMinutes = Math.max(0, totalExtraMinutes - usedExtraMinutes);
 
+      let finalStatus = status;
+      let lateMinutes = 0;
+
+      if (status === 'present' && sessions && sessions.length > 0 && user.shiftId && (user.shiftId as any).sessions?.length > 0) {
+        const sortedSessions = [...sessions].sort((a: any, b: any) => a.order - b.order);
+        const firstCheckIn = sortedSessions.find(s => s.checkIn)?.checkIn;
+        
+        if (firstCheckIn) {
+           const [loginH, loginM] = firstCheckIn.split(':').map(Number);
+           const loginMinutes = loginH * 60 + loginM;
+           
+           const shiftFirstSession = (user.shiftId as any).sessions.sort((a: any, b: any) => a.order - b.order)[0];
+           const [startH, startM] = shiftFirstSession.startTime.split(':').map(Number);
+           const graceTime = shiftFirstSession.graceTime || 0;
+           const shiftStartMinutes = startH * 60 + startM;
+           
+           if (loginMinutes > shiftStartMinutes + graceTime) {
+             finalStatus = 'late';
+             lateMinutes = loginMinutes - shiftStartMinutes;
+           }
+        }
+      }
+
       const attendance = await Attendance.findOneAndUpdate(
         { userId, date: attendanceDate },
         {
           $set: {
-            status,
+            status: finalStatus,
             loginTime: parsedLoginTime,
             logoutTime: parsedLogoutTime,
             sessions: dbSessions,
@@ -331,7 +354,7 @@ export async function POST(req: NextRequest) {
             workedMinutes,
             totalExtraMinutes,
             availableExtraMinutes,
-            lateMinutes: status === 'late' ? 0 : 0 // simplify for manual override
+            lateMinutes
           }
         },
         { new: true, upsert: true }

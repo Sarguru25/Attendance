@@ -107,15 +107,44 @@ export async function POST(req: NextRequest) {
           }
           user.markModified('leaveBalance');
           await user.save();
+          
+          // Update Attendance records for the leave duration
+          const fromDate = new Date(request.fromDate);
+          const toDate = new Date(request.toDate);
+          fromDate.setUTCHours(0, 0, 0, 0);
+          toDate.setUTCHours(23, 59, 59, 999);
+          
+          let currentDate = new Date(fromDate);
+          while (currentDate <= toDate) {
+            const startOfDay = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 0, 0, 0, 0));
+            const endOfDay = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 23, 59, 59, 999));
+            
+            let attStatus = request.duration === 'half_day' || request.numberOfDays === 0.5 ? 'half-day' : 'Leave';
+            
+            await Attendance.findOneAndUpdate(
+              { userId: request.userId, date: { $gte: startOfDay, $lte: endOfDay } },
+              { 
+                $set: { 
+                  status: attStatus,
+                  date: startOfDay,
+                  userId: request.userId,
+                  companyId: user?.companyId
+                } 
+              },
+              { upsert: true, new: true }
+            );
+            currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+          }
         }
       } else if (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION') {
-        const atDate = requestType === 'MISS_PUNCH' ? request.date : request.currentCheckIn; // or attendanceId
+        let attendance;
+        
         if (requestType === 'MISS_PUNCH') {
-          // Find or create attendance
           const d = new Date(request.date);
           const startOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
           const endOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
-          let attendance = await Attendance.findOne({ userId: request.employeeId, date: { $gte: startOfDay, $lte: endOfDay } });
+          attendance = await Attendance.findOne({ userId: request.employeeId, date: { $gte: startOfDay, $lte: endOfDay } });
+          
           if (!attendance) {
             attendance = new Attendance({
               userId: request.employeeId,
@@ -123,23 +152,42 @@ export async function POST(req: NextRequest) {
               status: 'present'
             });
           }
+        } else if (requestType === 'ATTENDANCE_CORRECTION') {
+          attendance = await Attendance.findById(request.attendanceId);
+        }
+
+        if (attendance) {
           if (request.requestedCheckIn) attendance.loginTime = request.requestedCheckIn;
           if (request.requestedCheckOut) attendance.logoutTime = request.requestedCheckOut;
-
+          
           if (attendance.loginTime && attendance.logoutTime) {
             attendance.totalHours = (new Date(attendance.logoutTime).getTime() - new Date(attendance.loginTime).getTime()) / (1000 * 60 * 60);
           }
-          await attendance.save();
-        } else if (requestType === 'ATTENDANCE_CORRECTION') {
-          const attendance = await Attendance.findById(request.attendanceId);
-          if (attendance) {
-            if (request.requestedCheckIn) attendance.loginTime = request.requestedCheckIn;
-            if (request.requestedCheckOut) attendance.logoutTime = request.requestedCheckOut;
-            if (attendance.loginTime && attendance.logoutTime) {
-              attendance.totalHours = (new Date(attendance.logoutTime).getTime() - new Date(attendance.loginTime).getTime()) / (1000 * 60 * 60);
-            }
-            await attendance.save();
+
+          attendance.status = 'present';
+          attendance.lateMinutes = 0;
+          
+          const user = await User.findById(attendance.userId).populate('shiftId');
+          if (attendance.loginTime && user?.shiftId && (user.shiftId as any).sessions?.length > 0) {
+             const shiftFirstSession = (user.shiftId as any).sessions.sort((a: any, b: any) => a.order - b.order)[0];
+             const [startH, startM] = shiftFirstSession.startTime.split(':').map(Number);
+             const graceTime = shiftFirstSession.graceTime || 0;
+             const shiftStartMinutes = startH * 60 + startM;
+             
+             const loginTimeStr = new Date(attendance.loginTime).toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+             const [loginH, loginM] = loginTimeStr.split(':').map(Number);
+             const loginMinutes = loginH * 60 + loginM;
+             
+             if (loginMinutes > shiftStartMinutes + graceTime) {
+               attendance.status = 'late';
+               attendance.lateMinutes = loginMinutes - shiftStartMinutes;
+             }
           }
+          
+          if (requestType === 'ATTENDANCE_CORRECTION') {
+             attendance.correctionStatus = 'approved';
+          }
+          await attendance.save();
         }
       }
     }

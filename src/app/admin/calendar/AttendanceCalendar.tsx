@@ -93,7 +93,12 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
       return current >= from && current <= to;
     });
 
-    if (leave) return { type: 'leave', label: 'Absent', subLabel: leave.leaveType, color: 'bg-destructive/10 text-destructive border-destructive/20' };
+    if (leave) {
+      if (leave.duration === 'half_day') {
+        return { type: 'leave', label: 'Half Day Leave', subLabel: leave.leaveType, color: 'bg-warning/10 text-warning border-warning/20' };
+      }
+      return { type: 'leave', label: 'On Leave', subLabel: leave.leaveType, color: 'bg-destructive/10 text-destructive border-destructive/20' };
+    }
 
     // 3. Check Holidays
     const holiday = data.holidays?.find((h: any) => isSameDay(new Date(h.date), day));
@@ -157,7 +162,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
 
     if (attendance) {
       setEditData({
-        status: attendance.status,
+        status: attendance.status === 'late' ? 'present' : attendance.status,
         duration: 'full_day',
         halfDaySession: 'first_half',
         sessions: initialSessions
@@ -417,7 +422,6 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
                     <option value="present">Present</option>
                     <option value="absent">Absent</option>
                     <option value="half-day">Half Day</option>
-                    <option value="late">Late</option>
                   </optgroup>
                   <optgroup label="Leaves">
                     <option value="Sick Leave">Sick Leave</option>
@@ -431,7 +435,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
                 </select>
               </div>
 
-              {!['none', 'present', 'absent', 'half-day', 'late'].includes(editData.status) && (
+              {!['none', 'present', 'absent', 'half-day'].includes(editData.status) && (
                 <>
                   <div>
                     <label className="block text-sm font-bold text-card-foreground mb-1.5">Leave Duration</label>
@@ -460,7 +464,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
                 </>
               )}
 
-              {['present', 'late', 'half-day'].includes(editData.status) && (
+              {['present', 'half-day'].includes(editData.status) && (
                 <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
                   {editData.sessions.map((session: any, index: number) => (
                     <div key={index} className="p-3 bg-muted/50 rounded-xl space-y-3">
