@@ -184,9 +184,6 @@ export async function POST(req: NextRequest) {
              }
           }
           
-          if (requestType === 'ATTENDANCE_CORRECTION') {
-             attendance.correctionStatus = 'approved';
-          }
           await attendance.save();
         }
       }
