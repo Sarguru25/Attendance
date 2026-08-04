@@ -407,7 +407,7 @@ export default function PayrollClient() {
                           <td className="p-2 border-r border-black">Job Location</td>
                           <td className="p-2 border-r border-black">{selectedPayslip.userId?.location || selectedPayslip.userId?.address || 'Coimbatore'}</td>
                           <td className="p-2 border-r border-black">Days Paid</td>
-                          <td className="p-2">{(selectedPayslip.totalWorkingDays || 0) - (selectedPayslip.absentDays || 0)}</td>
+                          <td className="p-2">{selectedPayslip.paidDays || 0}</td>
                         </tr>
                         <tr>
                           <td className="p-2 border-r border-black">Bank Name</td>

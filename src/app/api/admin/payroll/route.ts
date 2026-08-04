@@ -85,7 +85,22 @@ export async function POST(req: NextRequest) {
       let weeklyOffDays = 0;
       let holidayDays = 0;
 
-      daysInMonth.forEach(d => {
+      let employedDaysInMonth = daysInMonth;
+      let unemployedDays = 0;
+
+      if (user.joiningDate) {
+        const joinD = new Date(user.joiningDate);
+        joinD.setHours(0, 0, 0, 0);
+        employedDaysInMonth = daysInMonth.filter(d => {
+          const checkD = new Date(d);
+          checkD.setHours(0, 0, 0, 0);
+          return checkD >= joinD;
+        });
+        unemployedDays = daysInMonth.length - employedDaysInMonth.length;
+        if (unemployedDays < 0) unemployedDays = 0;
+      }
+
+      employedDaysInMonth.forEach(d => {
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
         const isWeeklyOff = !workingDaysPattern.includes(dayName);
         const isHoliday = holidays.some(h => isSameDay(new Date(h.date), d));
@@ -122,7 +137,7 @@ export async function POST(req: NextRequest) {
       let extraWorkedDays = 0;
       let compOffsTaken = 0;
 
-      daysInMonth.forEach(d => {
+      employedDaysInMonth.forEach(d => {
         const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
         const isWeeklyOff = !workingDaysPattern.includes(dayName);
         const isHoliday = holidays.some(h => isSameDay(new Date(h.date), d));
@@ -194,8 +209,8 @@ export async function POST(req: NextRequest) {
       const monthlySalary = user.monthlySalary || 0;
       const perDaySalary = monthlySalary / totalCalendarDays; 
 
-      // Deduction = Absent Days + Unpaid Leave Days (Paid leaves do not deduct from salary)
-      const deductionDays = absentDays + unpaidLeaveDays;
+      // Deduction = Unemployed Days + Absent Days + Unpaid Leave Days (Paid leaves do not deduct from salary)
+      const deductionDays = unemployedDays + absentDays + unpaidLeaveDays;
       let deductionAmount = deductionDays * perDaySalary;
 
       // Calculate extra pay for unconsumed compensatory off days worked in this month
