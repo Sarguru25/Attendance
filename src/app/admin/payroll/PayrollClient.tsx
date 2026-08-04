@@ -316,13 +316,13 @@ export default function PayrollClient() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-card-foreground">
-                            ₹{(payroll.grossSalary || payroll.monthlySalary).toLocaleString()}
+                            ₹{(payroll.grossSalary || payroll.monthlySalary).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-destructive font-bold">
-                            -₹{(payroll.deductionAmount ?? payroll.deductions).toLocaleString()}
+                            -₹{(payroll.deductionAmount ?? payroll.deductions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-success">
-                            ₹{(payroll.netSalary || payroll.finalSalary).toLocaleString()}
+                            ₹{(payroll.netSalary || payroll.finalSalary).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold">
                             <div className="flex items-center justify-end space-x-2">
