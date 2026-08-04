@@ -107,34 +107,6 @@ export async function POST(req: NextRequest) {
           }
           user.markModified('leaveBalance');
           await user.save();
-          
-          // Update Attendance records for the leave duration
-          const fromDate = new Date(request.fromDate);
-          const toDate = new Date(request.toDate);
-          fromDate.setUTCHours(0, 0, 0, 0);
-          toDate.setUTCHours(23, 59, 59, 999);
-          
-          let currentDate = new Date(fromDate);
-          while (currentDate <= toDate) {
-            const startOfDay = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 0, 0, 0, 0));
-            const endOfDay = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 23, 59, 59, 999));
-            
-            let attStatus = request.duration === 'half_day' || request.numberOfDays === 0.5 ? 'half-day' : 'Leave';
-            
-            await Attendance.findOneAndUpdate(
-              { userId: request.userId, date: { $gte: startOfDay, $lte: endOfDay } },
-              { 
-                $set: { 
-                  status: attStatus,
-                  date: startOfDay,
-                  userId: request.userId,
-                  companyId: user?.companyId
-                } 
-              },
-              { upsert: true, new: true }
-            );
-            currentDate.setUTCDate(currentDate.getUTCDate() + 1);
-          }
         }
       } else if (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION') {
         let attendance;
