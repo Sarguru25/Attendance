@@ -153,8 +153,10 @@ export async function POST(req: NextRequest) {
                if (leaveForDay.leaveType === 'Compensatory Off') {
                  compOffsTaken += 0.5;
                }
-               if (!att || att.status === 'absent') {
+               if (att && att.status === 'absent') {
                   absentDays += 0.5;
+               } else {
+                  presentDays += 0.5;
                }
             } else {
                if (leaveForDay.leaveType === 'Leave Without Pay') {
@@ -266,6 +268,8 @@ export async function POST(req: NextRequest) {
           absentDays,
           halfDays,
           leaveDays,
+          paidLeaveDays,
+          unpaidLeaveDays,
           weeklyOffDays,
           holidayDays,
           paidDays,

@@ -11,6 +11,8 @@ export interface IPayroll extends Document {
   absentDays: number;
   halfDays: number;
   leaveDays: number;
+  paidLeaveDays?: number;
+  unpaidLeaveDays?: number;
   weeklyOffDays: number;
   holidayDays: number;
   paidDays: number;
@@ -43,6 +45,8 @@ const PayrollSchema: Schema = new Schema(
     absentDays: { type: Number, required: true },
     halfDays: { type: Number, required: true },
     leaveDays: { type: Number, default: 0 },
+    paidLeaveDays: { type: Number, default: 0 },
+    unpaidLeaveDays: { type: Number, default: 0 },
     weeklyOffDays: { type: Number, default: 0 },
     holidayDays: { type: Number, default: 0 },
     paidDays: { type: Number, default: 0 },

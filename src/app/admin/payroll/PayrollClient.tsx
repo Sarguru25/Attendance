@@ -459,62 +459,62 @@ export default function PayrollClient() {
                         </tr>
                       </thead>
                       <tbody>
-                    {(() => {
-                      const monthlySalary = selectedPayslip.monthlySalary || 0;
-                      const basicSalary = monthlySalary * 0.5;
-                      const hraAllowance = monthlySalary * 0.2;
-                      const otherAllowances = monthlySalary * 0.3;
-                      
-                      const totalDeductions = selectedPayslip.deductionAmount || selectedPayslip.deductions || 0;
-                      const esi = selectedPayslip.salaryDeductionsSnapshot?.esi || 0;
-                      const rentalDeduction = selectedPayslip.userId?.salaryDeductions?.hra?.amount || selectedPayslip.salaryDeductionsSnapshot?.hra || 0;
-                      const loan = selectedPayslip.salaryDeductionsSnapshot?.loan || 0;
-                      
-                      // Loss of Pay is what's left of totalDeductions after ESI, Rental, and Loan
-                      const lossOfPay = Math.max(0, totalDeductions - esi - rentalDeduction - loan);
-                      const otherDeductions = lossOfPay + loan;
-                      
-                      const netPayable = monthlySalary - totalDeductions;
+                        {(() => {
+                          const monthlySalary = selectedPayslip.monthlySalary || 0;
+                          const basicSalary = monthlySalary * 0.5;
+                          const hraAllowance = monthlySalary * 0.2;
+                          const otherAllowances = monthlySalary * 0.3;
 
-                      return (
-                        <>
-                          <tr className="border-b border-black">
-                            <td className="p-2 border-r border-black w-1/4">Basic Salary</td>
-                            <td className="p-2 border-r border-black w-1/4 text-right">₹{basicSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                            <td className="p-2 border-r border-black w-1/4">TDS</td>
-                            <td className="p-2 w-1/4 text-right">₹0.00</td>
-                          </tr>
-                          <tr className="border-b border-black">
-                            <td className="p-2 border-r border-black">HRA</td>
-                            <td className="p-2 border-r border-black text-right">₹{hraAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                            <td className="p-2 border-r border-black">ESI</td>
-                            <td className="p-2 text-right">₹{esi.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          </tr>
-                          <tr className="border-b border-black">
-                            <td className="p-2 border-r border-black">Other Allowances</td>
-                            <td className="p-2 border-r border-black text-right">₹{otherAllowances.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                            <td className="p-2 border-r border-black">Rental Deduction</td>
-                            <td className="p-2 text-right">₹{rentalDeduction.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          </tr>
-                          <tr className="border-b border-black">
-                            <td className="p-2 border-r border-black">Bonus</td>
-                            <td className="p-2 border-r border-black text-right">₹0.00</td>
-                            <td className="p-2 border-r border-black">Other Deduction</td>
-                            <td className="p-2 text-right">₹{otherDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          </tr>
-                          <tr className="border-b border-black">
-                            <td className="p-2 border-r border-black">Gross Total</td>
-                            <td className="p-2 border-r border-black text-right">₹{monthlySalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                            <td className="p-2 border-r border-black">Total Deductions</td>
-                            <td className="p-2 text-right">₹{totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          </tr>
-                          <tr>
-                            <td colSpan={3} className="p-2 border-r border-black text-right font-bold text-base">Net Payable</td>
-                            <td className="p-2 text-right font-bold text-base">₹{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          </tr>
-                        </>
-                      );
-                    })()}
+                          const totalDeductions = selectedPayslip.deductionAmount || selectedPayslip.deductions || 0;
+                          const esi = selectedPayslip.salaryDeductionsSnapshot?.esi || 0;
+                          const rentalDeduction = selectedPayslip.userId?.salaryDeductions?.hra?.amount || selectedPayslip.salaryDeductionsSnapshot?.hra || 0;
+                          const loan = selectedPayslip.salaryDeductionsSnapshot?.loan || 0;
+
+                          // Loss of Pay is what's left of totalDeductions after ESI, Rental, and Loan
+                          const lossOfPay = Math.max(0, totalDeductions - esi - rentalDeduction - loan);
+                          const otherDeductions = lossOfPay + loan;
+
+                          const netPayable = monthlySalary - totalDeductions;
+
+                          return (
+                            <>
+                              <tr className="border-b border-black">
+                                <td className="p-2 border-r border-black w-1/4">Basic Salary</td>
+                                <td className="p-2 border-r border-black w-1/4 text-right">₹{basicSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                <td className="p-2 border-r border-black w-1/4">TDS</td>
+                                <td className="p-2 w-1/4 text-right">₹0.00</td>
+                              </tr>
+                              <tr className="border-b border-black">
+                                <td className="p-2 border-r border-black">HRA</td>
+                                <td className="p-2 border-r border-black text-right">₹{hraAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                <td className="p-2 border-r border-black">ESI</td>
+                                <td className="p-2 text-right">₹{esi.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                              <tr className="border-b border-black">
+                                <td className="p-2 border-r border-black">Other Allowances</td>
+                                <td className="p-2 border-r border-black text-right">₹{otherAllowances.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                <td className="p-2 border-r border-black">Rental Deduction</td>
+                                <td className="p-2 text-right">₹{rentalDeduction.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                              <tr className="border-b border-black">
+                                <td className="p-2 border-r border-black">Bonus</td>
+                                <td className="p-2 border-r border-black text-right">₹0.00</td>
+                                <td className="p-2 border-r border-black">Other Deduction</td>
+                                <td className="p-2 text-right">₹{otherDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                              <tr className="border-b border-black">
+                                <td className="p-2 border-r border-black">Gross Total</td>
+                                <td className="p-2 border-r border-black text-right">₹{monthlySalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                <td className="p-2 border-r border-black">Total Deductions</td>
+                                <td className="p-2 text-right">₹{totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                              <tr>
+                                <td colSpan={3} className="p-2 border-r border-black text-right font-bold text-base">Net Payable</td>
+                                <td className="p-2 text-right font-bold text-base">₹{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                            </>
+                          );
+                        })()}
                       </tbody>
                     </table>
                   </div>
