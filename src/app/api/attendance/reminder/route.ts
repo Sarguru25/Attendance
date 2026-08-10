@@ -5,6 +5,7 @@ import User from '@/models/User';
 import Attendance from '@/models/Attendance';
 import Leave from '@/models/Leave';
 import { sendEmail } from '@/lib/emailService';
+import { sendWebPushNotification } from '@/lib/sendWebPushNotification';
 
 export async function GET(req: Request) {
   try {
@@ -88,6 +89,16 @@ export async function GET(req: Request) {
           html: emailHtml
         });
         remindersSent.push(employee.name);
+        
+        // Also dispatch web push notification
+        try {
+          await sendWebPushNotification(employee._id.toString(), {
+            title: 'Action Required: Daily Attendance Reminder',
+            body: `We noticed that you haven't checked in for today.`
+          });
+        } catch (pushErr) {
+          console.error(`Failed to send web push to ${employee.email}:`, pushErr);
+        }
       } catch (emailError) {
         console.error(`Failed to send reminder email to ${employee.email}:`, emailError);
       }
@@ -202,6 +213,16 @@ export async function POST(req: Request) {
             html: emailHtml
           });
           remindersSent.push(employee.name);
+          
+          // Also dispatch web push notification
+          try {
+            await sendWebPushNotification(employee._id.toString(), {
+              title: emailSubject,
+              body: emailMessage
+            });
+          } catch (pushErr) {
+            console.error(`Failed to send web push to ${employee.email}:`, pushErr);
+          }
         } catch (emailError) {
           console.error(`Failed to send reminder email to ${employee.email}:`, emailError);
         }

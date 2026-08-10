@@ -51,7 +51,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-neutral-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <Image
-          src="/TF_logo2.png"
+          src="/TF_logo.png"
           alt="Logo"
           width={300}
           height={82}
