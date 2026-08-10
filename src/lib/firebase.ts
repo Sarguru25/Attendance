@@ -10,8 +10,8 @@ const firebaseConfig = {
   appId: "1:172747987411:web:77a1f73f4a9b7a6f89b726"
 };
 
-// Initialize Firebase only on the client-side to prevent SSR issues
-export const app = typeof window !== 'undefined' && !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// Initialize Firebase safely, allowing it to run without crashing during SSR
+export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const getFirebaseMessaging = async (): Promise<Messaging | null> => {
   if (typeof window === 'undefined') return null;
