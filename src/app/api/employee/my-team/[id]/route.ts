@@ -50,7 +50,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       date: { $gte: startOfMonth, $lte: endOfMonth }
     }).sort({ date: -1 }).lean();
 
-    let present = 0, absent = 0, late = 0, halfDay = 0, leaveCount = 0, permissionCount = 0;
+    let present = 0, absent = 0, late = 0, halfDay = 0, leaveCount = 0;
     
     attendances.forEach(a => {
       if (a.status === 'present') present++;
@@ -58,8 +58,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (a.status === 'absent') absent++;
       if (a.status === 'half-day') halfDay++;
       if (a.status === 'Leave') leaveCount++;
-      if (a.status === 'Permission') permissionCount++;
     });
+
+    // Fetch Permissions for the month
+    const recentPermissions = await Permission.find({ userId: employeeId })
+      .sort({ date: -1 })
+      .limit(10)
+      .lean();
 
     const attendanceSummary = {
       present,
@@ -67,7 +72,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       late,
       halfDay,
       leave: leaveCount,
-      permission: permissionCount,
+      permission: recentPermissions.length,
       total: attendances.length
     };
 
@@ -77,11 +82,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .limit(10)
       .lean();
 
-    // Fetch Permissions for the month
-    const recentPermissions = await Permission.find({ userId: employeeId })
-      .sort({ date: -1 })
-      .limit(10)
-      .lean();
+
 
     // Fetch leave balance
     const leaveBalance = employee.leaveBalance || null;
