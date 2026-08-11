@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -28,6 +29,27 @@ import clsx from 'clsx';
 export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const [hasTeam, setHasTeam] = useState(false);
+
+  useEffect(() => {
+    const checkTeam = async () => {
+      try {
+        const res = await fetch('/api/employee/my-team');
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.team?.length > 0) {
+            setHasTeam(true);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check team status', err);
+      }
+    };
+    if (session?.user) {
+      checkTeam();
+    }
+  }, [session]);
+
   const role = session?.user?.role;
 
   const adminLinks = [
@@ -57,6 +79,10 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
     { name: 'Payslips', href: '/employee/payslips', icon: Receipt },
     { name: 'Profile', href: '/employee/profile', icon: UserIcon },
   ];
+
+  if (hasTeam) {
+    employeeLinks.splice(employeeLinks.findIndex(l => l.name === 'Permissions'), 0, { name: 'My Team', href: '/employee/my-team', icon: Users });
+  }
 
   let links = ['admin', 'super_admin'].includes(role as string) ? adminLinks : employeeLinks;
 

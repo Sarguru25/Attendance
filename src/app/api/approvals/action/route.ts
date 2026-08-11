@@ -157,6 +157,46 @@ export async function POST(req: NextRequest) {
           }
           
           await attendance.save();
+
+          // Handle Comp-Off logic for Miss Punch / Correction approval
+          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          const attendanceDate = new Date(attendance.date);
+          const dayName = dayNames[attendanceDate.getDay()];
+          const shift = user?.shiftId as any;
+          const isWeeklyOff = shift && (!shift.workingDays || !shift.workingDays.includes(dayName));
+          
+          const Holiday = (await import('@/models/Holiday')).default;
+          const startOfAttendanceDay = new Date(attendanceDate);
+          startOfAttendanceDay.setHours(0,0,0,0);
+          const endOfAttendanceDay = new Date(attendanceDate);
+          endOfAttendanceDay.setHours(23,59,59,999);
+
+          const holiday = await Holiday.findOne({
+            date: { $gte: startOfAttendanceDay, $lte: endOfAttendanceDay },
+            holidayType: { $in: ['public', 'company'] }
+          });
+          const isHoliday = !!holiday;
+
+          if (isWeeklyOff || isHoliday) {
+             const CompOffCredit = (await import('@/models/CompOffCredit')).default;
+             const existingCredit = await CompOffCredit.findOne({ employeeId: attendance.userId, attendanceDate });
+             if (!existingCredit) {
+                const expiry = new Date(attendanceDate);
+                expiry.setMonth(expiry.getMonth() + 3);
+                await CompOffCredit.create({
+                  employeeId: attendance.userId,
+                  attendanceDate,
+                  earnedDate: new Date(),
+                  availableFromDate: new Date(),
+                  expiryDate: expiry,
+                  companyId: user?.companyId,
+                });
+                
+                // Sync leave balance to reflect new comp-off
+                const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
+                await LeaveBalanceEngine.syncLeaveBalance(attendance.userId.toString());
+             }
+          }
         }
       }
     }

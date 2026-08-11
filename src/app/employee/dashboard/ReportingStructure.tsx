@@ -300,10 +300,16 @@ export default function ReportingStructure({ manager, currentUser, subordinates,
       </div>
 
       {/* 3. Department Members / Subordinates Card */}
-      <div className="bg-card rounded-2xl shadow-sm border border-border p-5 hover:border-primary/50 transition-colors">
-        <h4 className="text-muted-foreground uppercase tracking-wider text-[11px] font-bold mb-4">
-          Reporting to Me <span className="bg-primary text-primary-foreground ml-2 px-2 py-0.5 rounded-full text-[10px]">{subordinates?.length || 0}</span>
-        </h4>
+      <div 
+        onClick={() => router.push('/employee/my-team')}
+        className="bg-card rounded-2xl shadow-sm border border-border p-5 hover:border-primary/50 transition-colors cursor-pointer group/card"
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h4 className="text-muted-foreground uppercase tracking-wider text-[11px] font-bold">
+            Reporting to Me <span className="bg-primary text-primary-foreground ml-2 px-2 py-0.5 rounded-full text-[10px]">{subordinates?.length || 0}</span>
+          </h4>
+          <span className="text-primary text-[10px] uppercase font-bold tracking-wider opacity-0 group-hover/card:opacity-100 transition-opacity">View All →</span>
+        </div>
         <div className="space-y-4">
           {subordinates && subordinates.length > 0 ? (
             subordinates.map((sub, idx) => (
