@@ -27,6 +27,7 @@ interface TeamMember {
   designation: string;
   profileImage?: string;
   shift?: any;
+  company?: { _id: string, name: string };
   status: string;
   todayAttendance?: any;
 }
