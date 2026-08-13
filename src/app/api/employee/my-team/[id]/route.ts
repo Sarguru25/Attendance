@@ -23,6 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const employee = await User.findOne({ _id: employeeId, reportsTo: currentUserId }, null, { bypassTenant: true })
       .select('-password -__v') // exclude sensitive fields
       .populate('shiftId')
+      .populate('companyId', 'name')
       .populate('reportsTo', 'name')
       .lean();
 

@@ -4,7 +4,9 @@ import mongoose from 'mongoose';
 export class HierarchyService {
   // Get the full organization tree recursively
   static async getOrganizationTree() {
-    const allUsers = await User.find({}).lean();
+    const allUsers = await User.find({}, null, { bypassTenant: true })
+      .populate('companyId', 'name')
+      .lean();
     
     // Map users by ID for quick lookup
     const userMap = new Map();
@@ -38,7 +40,7 @@ export class HierarchyService {
       throw new Error('Employee cannot report to themselves.');
     }
 
-    const employee = await User.findById(employeeId);
+    const employee = await User.findById(employeeId, null, { bypassTenant: true });
     if (!employee) throw new Error('Employee not found.');
 
     if (employee.role === 'admin' && reportsTo !== null) {
@@ -46,7 +48,7 @@ export class HierarchyService {
     }
 
     if (reportsTo) {
-      const manager = await User.findById(reportsTo);
+      const manager = await User.findById(reportsTo, null, { bypassTenant: true });
       if (!manager) throw new Error('Manager not found.');
       
       // Check for circular dependency
@@ -55,7 +57,7 @@ export class HierarchyService {
         if (currentManagerId === employeeId) {
           throw new Error('Circular reporting hierarchy detected.');
         }
-        const nextManager = await User.findById(currentManagerId).select('reportsTo');
+        const nextManager = await User.findById(currentManagerId, null, { bypassTenant: true }).select('reportsTo');
         currentManagerId = nextManager?.reportsTo?.toString();
       }
     }
@@ -67,7 +69,7 @@ export class HierarchyService {
   
   // Get direct subordinates
   static async getDirectSubordinates(employeeId: string) {
-    return User.find({ reportsTo: employeeId }).lean();
+    return User.find({ reportsTo: employeeId }, null, { bypassTenant: true }).lean();
   }
 
   // Get full reporting chain (upwards)
@@ -76,11 +78,11 @@ export class HierarchyService {
     let currentEmployeeId: string | undefined = employeeId;
 
     while (currentEmployeeId) {
-      const currentEmployee = await User.findById(currentEmployeeId).select('reportsTo role name designation').lean() as any;
+      const currentEmployee = await User.findById(currentEmployeeId, null, { bypassTenant: true }).select('reportsTo role name designation').lean() as any;
       if (!currentEmployee || !currentEmployee.reportsTo) {
         break;
       }
-      const manager = await User.findById(currentEmployee.reportsTo).select('name role designation department').lean() as any;
+      const manager = await User.findById(currentEmployee.reportsTo, null, { bypassTenant: true }).select('name role designation department').lean() as any;
       if (manager) {
         chain.push(manager);
         currentEmployeeId = manager._id.toString();
@@ -97,7 +99,7 @@ export class HierarchyService {
     const team: any[] = [];
     
     const fetchSubordinates = async (managerIdStr: string) => {
-      const subs = await User.find({ reportsTo: managerIdStr }).lean();
+      const subs = await User.find({ reportsTo: managerIdStr }, null, { bypassTenant: true }).lean();
       for (const sub of subs) {
         team.push(sub);
         await fetchSubordinates((sub as any)._id.toString());

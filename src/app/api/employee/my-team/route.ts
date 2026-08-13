@@ -20,8 +20,9 @@ export async function GET(req: NextRequest) {
 
     // Fetch employees reporting to this user
     const teamMembers = await User.find({ reportsTo: currentUserId, isActive: true }, null, { bypassTenant: true })
-      .select('employeeId name email phoneNumber department designation profileImage shiftId joiningDate role')
+      .select('employeeId name email phoneNumber department designation profileImage shiftId joiningDate role companyId')
       .populate('shiftId')
+      .populate('companyId', 'name')
       .lean();
 
     if (!teamMembers || teamMembers.length === 0) {
@@ -74,6 +75,7 @@ export async function GET(req: NextRequest) {
         designation: member.designation,
         profileImage: member.profileImage,
         shift: member.shiftId,
+        company: member.companyId,
         status: status,
         todayAttendance: attendance || null
       };

@@ -287,6 +287,7 @@ export default function MyTeamPage() {
                   <div>
                     <h3 className="text-sm font-medium">{member.name}</h3>
                     <p className="text-xs text-muted-foreground">{member.designation}</p>
+                    <p className="text-[10px] text-muted-foreground/70">{member.company?.name || 'Unknown Company'}</p>
                   </div>
                 </div>
                 {getStatusBadge(member.status)}
@@ -309,6 +310,7 @@ export default function MyTeamPage() {
               <tr className="border-b border-border text-xs uppercase text-muted-foreground bg-muted/50">
                 <th className="px-6 py-3 font-medium">Employee</th>
                 <th className="px-6 py-3 font-medium">ID</th>
+                {/* <th className="px-6 py-3 font-medium">Company</th> */}
                 <th className="px-6 py-3 font-medium">Department</th>
                 <th className="px-6 py-3 font-medium">Status</th>
                 <th className="px-6 py-3 font-medium">Check In</th>
@@ -338,6 +340,7 @@ export default function MyTeamPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">{member.employeeId}</td>
+                  {/* <td className="px-6 py-4 text-sm text-muted-foreground">{member.company?.name || '-'}</td> */}
                   <td className="px-6 py-4 text-sm text-muted-foreground">{member.department}</td>
                   <td className="px-6 py-4">{getStatusBadge(member.status)}</td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">{formatTime(member.todayAttendance?.loginTime)}</td>
@@ -391,6 +394,7 @@ export default function MyTeamPage() {
                       <p className="text-muted-foreground text-sm">{employeeDetails.employee.employeeId}</p>
                       <p className="text-sm font-medium mt-1">{employeeDetails.employee.designation}</p>
                       <p className="text-xs text-muted-foreground">{employeeDetails.employee.department} Department</p>
+                      <p className="text-xs font-bold text-primary mt-1">{employeeDetails.employee.companyId?.name || employeeDetails.employee.company?.name || 'Unknown Company'}</p>
                     </div>
                   </div>
 
