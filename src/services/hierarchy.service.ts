@@ -63,7 +63,11 @@ export class HierarchyService {
     }
 
     employee.reportsTo = reportsTo ? new mongoose.Types.ObjectId(reportsTo) : null;
-    await employee.save();
+    await User.updateOne(
+      { _id: employee._id }, 
+      { $set: { reportsTo: employee.reportsTo } }, 
+      { bypassTenant: true }
+    );
     return employee;
   }
   
