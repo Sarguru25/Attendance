@@ -66,7 +66,7 @@ export class HierarchyService {
     await User.updateOne(
       { _id: employee._id }, 
       { $set: { reportsTo: employee.reportsTo } }, 
-      { bypassTenant: true }
+      { bypassTenant: true } as any
     );
     return employee;
   }
