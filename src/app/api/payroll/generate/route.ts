@@ -86,21 +86,23 @@ export async function POST(req: NextRequest) {
       const totalDeductions = halfDayDeduction + absentDeduction;
       const finalSalary = employee.monthlySalary - totalDeductions;
 
-      // Upsert payroll record
-      const payroll = await Payroll.findOneAndUpdate(
-        { userId: employee._id, month, year },
-        {
-          totalWorkingDays,
-          presentDays,
-          absentDays,
-          halfDays,
-          monthlySalary: employee.monthlySalary,
-          deductions: totalDeductions,
-          finalSalary: Math.max(0, finalSalary), // Ensure no negative salary
-          generatedAt: new Date(),
-        },
-        { upsert: true, new: true }
-      );
+      // Delete any previous payroll record for this employee for the same month and year
+      await Payroll.deleteMany({ userId: employee._id, month, year });
+
+      // Create new payroll record
+      const payroll = await Payroll.create({
+        userId: employee._id,
+        month,
+        year,
+        totalWorkingDays,
+        presentDays,
+        absentDays,
+        halfDays,
+        monthlySalary: employee.monthlySalary,
+        deductions: totalDeductions,
+        finalSalary: Math.max(0, finalSalary), // Ensure no negative salary
+        generatedAt: new Date(),
+      });
 
       generatedPayrolls.push(payroll);
     }

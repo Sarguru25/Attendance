@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import dbConnect from '@/lib/mongodb';
 import GeneratedLetter from '@/models/GeneratedLetter';
+import LetterTemplate from '@/models/LetterTemplate';
+import { renderLetterContentHTML } from '@/lib/letterUtils';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,9 +14,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     await dbConnect();
     
+    // Force model registration
+    const models = [LetterTemplate];
+
     // In Next.js 15+, params is a Promise in Route Handlers
     const { id } = await params;
-    const letter = await GeneratedLetter.findById(id).populate('employeeId', 'name');
+    const letter = await GeneratedLetter.findById(id)
+      .populate('employeeId', 'name employeeId designation department email')
+      .populate('templateId');
     
     if (!letter) {
       return NextResponse.json({ error: 'Letter not found' }, { status: 404 });
@@ -22,6 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // Cast employeeId to any since it's populated but typed as ObjectId
     const employee = letter.employeeId as any;
+    const template = letter.templateId as any;
 
     // Check permissions
     const isAdmin = ['super_admin', 'admin', 'director', 'hr'].includes(session.user.role as string);
@@ -31,12 +39,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (!letter.content) {
+    // If template exists and has updated content, dynamically render using updated template content + saved variables
+    let finalContent = letter.content;
+    if (template && template.content) {
+      const renderedBody = renderLetterContentHTML(template.content, employee, letter.variables, letter.createdAt);
+      finalContent = `<div style="font-family: Arial, sans-serif; padding: 20px;">${renderedBody}</div>`;
+    }
+
+    if (!finalContent) {
       return NextResponse.json({ error: 'No content found for this letter' }, { status: 400 });
     }
 
-    // Instead of generating a PDF on the server (which causes issues on serverless deployments like Vercel),
-    // we return an HTML page that automatically triggers the browser's native print-to-PDF functionality.
+    // Return HTML page triggering browser's native print
     const html = `
       <!DOCTYPE html>
       <html>
@@ -60,7 +74,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             @media print {
               @page {
                 size: A4;
-                margin: 0; /* Removing page margin hides the browser's default header/footer (date, URL, etc.) */
+                margin: 0;
               }
             }
             div {
@@ -70,7 +84,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           </style>
         </head>
         <body onload="setTimeout(() => window.print(), 500)">
-          ${letter.content}
+          ${finalContent}
         </body>
       </html>
     `;
@@ -84,3 +98,4 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+

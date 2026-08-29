@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()));
 
     await dbConnect();
-    const payrolls = await Payroll.find({ month, year })
+    const rawPayrolls = await Payroll.find({ month, year })
       .populate({
         path: 'userId',
         select: 'name employeeId department profileImage shiftId designation joiningDate address location bankName accountNumber ifscCode leaveBalance salaryDeductions',
@@ -33,6 +33,29 @@ export async function GET(req: NextRequest) {
       })
       .sort({ generatedAt: -1 })
       .lean();
+
+    // Deduplicate per user for this month/year: keep latest, delete older duplicates from DB
+    const payrolls: any[] = [];
+    const seenUser = new Set<string>();
+    const idsToDelete: string[] = [];
+
+    for (const p of rawPayrolls) {
+      const userIdStr = (p.userId as any)?._id?.toString() || p.userId?.toString();
+      if (userIdStr) {
+        if (seenUser.has(userIdStr)) {
+          idsToDelete.push((p as any)._id);
+        } else {
+          seenUser.add(userIdStr);
+          payrolls.push(p);
+        }
+      } else {
+        payrolls.push(p);
+      }
+    }
+
+    if (idsToDelete.length > 0) {
+      await Payroll.deleteMany({ _id: { $in: idsToDelete } });
+    }
 
     return NextResponse.json({ payrolls });
   } catch (error: any) {
@@ -273,43 +296,43 @@ export async function POST(req: NextRequest) {
       const grossSalary = monthlySalary + extraPayAmount;
       const netSalary = grossSalary - deductionAmount;
 
-      // Upsert payroll
-      const payroll = await Payroll.findOneAndUpdate(
-        { userId: user._id, month, year, companyId: activeCompanyId },
-        {
-          totalCalendarDays,
-          totalWorkingDays,
-          presentDays,
-          absentDays,
-          halfDays,
-          leaveDays,
-          paidLeaveDays,
-          unpaidLeaveDays,
-          weeklyOffDays,
-          holidayDays,
-          paidDays,
-          deductionDays,
-          monthlySalary,
-          grossSalary: monthlySalary,
-          deductionAmount,
-          netSalary,
-          generatedAt: new Date(),
-          companyId: activeCompanyId,
-          salaryDeductionsSnapshot: {
-            esi: esiDeduction,
-            hra: hraDeduction,
-            loan: loanDeduction
-          },
-          // Legacy fields for backward compatibility
-          deductions: deductionAmount,
-          finalSalary: netSalary
+      // Delete any previous payroll for this user for the same month & year to ensure no duplicate records exist
+      await Payroll.deleteMany({ userId: user._id, month, year });
+
+      // Create new payroll record
+      const payrollDoc = await Payroll.create({
+        userId: user._id,
+        companyId: activeCompanyId,
+        month,
+        year,
+        totalCalendarDays,
+        totalWorkingDays,
+        presentDays,
+        absentDays,
+        halfDays,
+        leaveDays,
+        paidLeaveDays,
+        unpaidLeaveDays,
+        weeklyOffDays,
+        holidayDays,
+        paidDays,
+        deductionDays,
+        monthlySalary,
+        grossSalary: monthlySalary,
+        deductionAmount,
+        netSalary,
+        generatedAt: new Date(),
+        salaryDeductionsSnapshot: {
+          esi: esiDeduction,
+          hra: hraDeduction,
+          loan: loanDeduction
         },
-        {
-  upsert: true,
-  returnDocument: 'after',
-  bypassTenant: true
-}
-      ).populate('userId', 'name employeeId');
+        // Legacy fields for backward compatibility
+        deductions: deductionAmount,
+        finalSalary: netSalary
+      });
+
+      const payroll = await Payroll.findById(payrollDoc._id).populate('userId', 'name employeeId');
 
       generatedPayrolls.push(payroll);
     }

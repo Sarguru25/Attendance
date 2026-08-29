@@ -13,6 +13,7 @@ export default function PayslipsClient() {
   const { data: lettersData, isLoading: lettersLoading } = useSWR('/api/employee/letters', fetcher);
   
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
+  const [selectedLetter, setSelectedLetter] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'payslips' | 'letters'>('payslips');
   const { activeCompany } = useCompany();
 
@@ -149,13 +150,22 @@ export default function PayslipsClient() {
                 </div>
               </div>
 
-              <button
-                onClick={() => window.open(`/api/letters/${letter._id}/download`, '_blank')}
-                className="w-full flex items-center justify-center px-4 py-2 min-h-[44px] bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors border border-border text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download PDF
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setSelectedLetter(letter)}
+                  className="flex items-center justify-center px-3 py-2 min-h-[44px] bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors border border-border text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Preview
+                </button>
+                <button
+                  onClick={() => window.open(`/api/letters/${letter._id}/download`, '_blank')}
+                  className="flex items-center justify-center px-3 py-2 min-h-[44px] bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </button>
+              </div>
             </div>
           ))
         )}
@@ -332,6 +342,45 @@ export default function PayslipsClient() {
           </div>
         </div>
       )}
+
+      {/* Letter Modal (Used for previewing/printing letter) */}
+      {selectedLetter && (
+        <div className="fixed inset-0 z-50 overflow-y-auto print:absolute print:inset-0 print:bg-white print:text-black">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0 print:block print:p-0">
+            <div className="fixed inset-0 transition-opacity bg-black/80 backdrop-blur-sm z-0 print:hidden" onClick={() => setSelectedLetter(null)} />
+
+            <div className="relative z-10 inline-block w-full max-w-3xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-card text-card-foreground rounded-2xl shadow-xl sm:my-8 sm:align-middle sm:p-8 print:shadow-none print:m-0 print:w-full print:max-w-none animate-in fade-in zoom-in-95 duration-200">
+
+              <div className="flex justify-between items-center mb-6 print:hidden border-b border-border pb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-card-foreground">{selectedLetter.templateId?.templateName || 'Official Letter'}</h3>
+                  <p className="text-xs text-muted-foreground">Category: {selectedLetter.templateId?.category || 'General'}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => window.open(`/api/letters/${selectedLetter._id}/download`, '_blank')} 
+                    className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring text-sm"
+                  >
+                    <Download className="w-4 h-4 mr-2" /> Download PDF
+                  </button>
+                  <button onClick={() => setSelectedLetter(null)} className="text-muted-foreground hover:text-foreground p-2 rounded-xl hover:bg-accent transition-colors">
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Document Preview Area */}
+              <div className="space-y-4 text-black bg-white p-6 sm:p-10 rounded-xl overflow-x-auto border border-gray-200 shadow-sm min-h-[400px]">
+                <div 
+                  className="prose max-w-none text-black font-sans leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: selectedLetter.content || '<p class="text-gray-500">No content available.</p>' }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
-import { Mail, FileText, CheckCircle, Search, Users } from 'lucide-react';
+import { Mail, FileText, CheckCircle, Search, Users, Download } from 'lucide-react';
 import useSWR from 'swr';
 import { format } from 'date-fns';
 import { api } from '@/services/api';
@@ -110,6 +110,64 @@ export default function CreateLetterPage() {
     });
 
     return html;
+  };
+
+  const handleDownloadPreview = () => {
+    if (!previewEmployeeId || !selectedTemplate) {
+      return toast.error('Please select a template and an employee to preview');
+    }
+
+    const emp = employees.find((e: any) => e._id === previewEmployeeId);
+    let html = generatePreviewHTML(previewEmployeeId);
+    if (!html) return toast.error('No letter content to preview');
+
+    if (useLetterhead) {
+      html = `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          ${html}
+        </div>
+      `;
+    } else {
+      html = `<div style="font-family: Arial, sans-serif; padding: 20px;">${html}</div>`;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>Preview - ${emp?.name || 'Employee Letter'}</title>
+            <style>
+              @font-face {
+                font-family: "Allura";
+                src: url("/font/Allura/Allura-Regular.ttf") format("truetype");
+              }
+              body {
+                background-color: #ffffff;
+                font-size: 16px;
+                text-align: justify;
+                font-family: Helvetica, Arial, sans-serif;
+                line-height: 1.5;
+                margin: 0;
+                padding: 20px;
+              }
+              @media print {
+                @page {
+                  size: A4;
+                  margin: 0;
+                }
+              }
+            </style>
+          </head>
+          <body onload="setTimeout(() => window.print(), 500)">
+            ${html}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
   };
 
   const handleBulkSend = async () => {
@@ -346,14 +404,27 @@ export default function CreateLetterPage() {
               </span>
             )}
           </div>
-          <button
-            onClick={handleBulkSend}
-            disabled={isSending || selectedEmployees.length === 0}
-            className="flex items-center px-4 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-xl min-h-[44px] shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-          >
-            <Mail className="w-4 h-4 mr-2" />
-            {isSending ? 'Processing...' : `Send to ${selectedEmployees.length}`}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleDownloadPreview}
+              disabled={!previewEmployeeId || !selectedTemplate}
+              className="flex items-center px-3 py-2 bg-white text-neutral-800 text-sm font-bold rounded-xl min-h-[44px] border border-neutral-300 shadow-sm hover:bg-neutral-50 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title="Download & verify letter before sending"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download Preview
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkSend}
+              disabled={isSending || selectedEmployees.length === 0}
+              className="flex items-center px-4 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-xl min-h-[44px] shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              {isSending ? 'Processing...' : `Send to ${selectedEmployees.length}`}
+            </button>
+          </div>
         </div>
         
         <div className="flex-1 p-8 overflow-y-auto bg-[#525659]">
