@@ -3,6 +3,16 @@ import './Shift';
 import './Company';
 import './User';
 
+export interface IHalfSession {
+  status?: 'present' | 'absent' | 'leave' | 'late' | 'pending' | null;
+  leaveId?: mongoose.Types.ObjectId | null;
+  leaveType?: string | null;
+  checkIn?: Date | null;
+  checkOut?: Date | null;
+  workedHours?: number;
+  lateMinutes?: number;
+}
+
 export interface IAttendanceSession {
   sessionOrder: number;
   checkIn?: Date;
@@ -16,6 +26,11 @@ export interface IAttendance extends Document {
   userId: mongoose.Types.ObjectId;
   date: Date;
   shiftId?: mongoose.Types.ObjectId;
+
+  firstHalf?: IHalfSession;
+  secondHalf?: IHalfSession;
+  paidLeaveDays?: number;
+  unpaidLeaveDays?: number;
   
   // New session-based structure
   sessions: IAttendanceSession[];
@@ -37,6 +52,16 @@ export interface IAttendance extends Document {
   availableExtraMinutes?: number;
 }
 
+const HalfSessionSchema = new Schema({
+  status: { type: String, enum: ['present', 'absent', 'leave', 'late', 'pending', null], default: null },
+  leaveId: { type: Schema.Types.ObjectId, ref: 'Leave', default: null },
+  leaveType: { type: String, default: null },
+  checkIn: { type: Date, default: null },
+  checkOut: { type: Date, default: null },
+  workedHours: { type: Number, default: 0 },
+  lateMinutes: { type: Number, default: 0 }
+}, { _id: false });
+
 const AttendanceSessionSchema = new Schema({
   sessionOrder: { type: Number, required: true },
   checkIn: { type: Date },
@@ -52,6 +77,11 @@ const AttendanceSchema: Schema = new Schema(
     date: { type: Date, required: true },
     shiftId: { type: Schema.Types.ObjectId, ref: 'Shift' },
     
+    firstHalf: { type: HalfSessionSchema, default: null },
+    secondHalf: { type: HalfSessionSchema, default: null },
+    paidLeaveDays: { type: Number, default: 0 },
+    unpaidLeaveDays: { type: Number, default: 0 },
+
     sessions: { type: [AttendanceSessionSchema], default: [] },
     
     // Legacy fields

@@ -13,10 +13,9 @@ import {
   isSameDay,
   isToday,
   startOfWeek,
-  endOfWeek,
-  parseISO
+  endOfWeek
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, Loader2, Calendar as CalendarIcon, User as UserIcon, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Calendar as CalendarIcon, User as UserIcon, Download, Clock } from 'lucide-react';
 import clsx from 'clsx';
 import * as ExcelJS from 'exceljs';
 import { toast } from 'react-hot-toast';
@@ -29,6 +28,16 @@ interface Props {
   isAdmin?: boolean;
 }
 
+const LEAVE_TYPES = [
+  'Casual Leave',
+  'Sick Leave',
+  'Compensatory Off',
+  'Restricted Holiday',
+  'Maternity Leave',
+  'Paternity Leave',
+  'Leave Without Pay'
+];
+
 export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedUser, setSelectedUser] = useState<string | undefined>(userId);
@@ -36,12 +45,24 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
   // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [editData, setEditData] = useState<any>({ status: 'present', sessions: [], duration: 'full_day', halfDaySession: 'first_half' });
+  
+  const [editData, setEditData] = useState<any>({
+    status: 'present',
+    duration: 'full_day',
+    halfDaySession: 'first_half',
+    firstHalfStatus: 'present',
+    firstHalfLeaveType: 'Casual Leave',
+    firstHalfIn: '',
+    firstHalfOut: '',
+    secondHalfStatus: 'present',
+    secondHalfLeaveType: 'Casual Leave',
+    secondHalfIn: '',
+    secondHalfOut: ''
+  });
   const [isSaving, setIsSaving] = useState(false);
 
   // Fetch employees list if admin
   const { data: employeesData } = useSWR(isAdmin ? '/api/admin/employees' : null, fetcher);
-
   const [isExporting, setIsExporting] = useState(false);
 
   const monthStr = format(currentDate, 'yyyy-MM');
@@ -60,32 +81,27 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     return eachDayOfInterval({ start, end });
   }, [currentDate]);
 
-  const getDayStatus = (day: Date) => {
+  const getDayDetails = (day: Date) => {
     if (!data || data.error) return null;
 
-    // 1. Check Attendance
-    const attendance = data.attendances?.find((a: any) => isSameDay(new Date(a.date), day));
-    if (attendance) {
-      if (attendance.status === 'present') {
-        const hours = attendance.totalHours ? `${Math.floor(attendance.totalHours)}.${Math.round((attendance.totalHours % 1) * 60).toString().padStart(2, '0')} Hrs` : (attendance.loginTime && !attendance.logoutTime) ? 'Working' : '';
-        return { type: 'present', label: 'Present', subLabel: hours, color: 'bg-success/10 text-success border-success/20' };
-      }
-      if (attendance.status === 'half-day') {
-        return { type: 'half-day', label: 'Half Day', subLabel: attendance.totalHours ? `${Math.floor(attendance.totalHours)}.${Math.round((attendance.totalHours % 1) * 60).toString().padStart(2, '0')} Hrs` : '', color: 'bg-warning/10 text-warning border-warning/20' };
-      }
-      if (attendance.status === 'absent') {
-        return { type: 'absent', label: 'Absent', color: 'bg-destructive/10 text-destructive border-destructive/20' };
-      }
-      if (attendance.status === 'late') {
-        return { type: 'late', label: 'Late', subLabel: `${attendance.lateMinutes}m late`, color: 'bg-warning/10 text-warning border-warning/20' };
-      }
+    // 1. Check Holiday
+    const holiday = data.holidays?.find((h: any) => isSameDay(new Date(h.date), day));
+    if (holiday) {
+      return {
+        isHoliday: true,
+        label: holiday.holidayName,
+        color: 'bg-primary/10 text-primary border-primary/20'
+      };
     }
 
-    // 2. Check Leaves
+    // 2. Check Weekend / Weekly Off
+    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+
+    // 3. Attendance and Leave records
+    const attendance = data.attendances?.find((a: any) => isSameDay(new Date(a.date), day));
     const leave = data.leaves?.find((l: any) => {
       const from = new Date(l.fromDate);
       const to = new Date(l.toDate);
-      // Strip time
       from.setHours(0, 0, 0, 0);
       to.setHours(0, 0, 0, 0);
       const current = new Date(day);
@@ -93,37 +109,91 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
       return current >= from && current <= to;
     });
 
-    if (leave) {
-      if (leave.duration === 'half_day') {
-        return { type: 'leave', label: 'Half Day Leave', subLabel: leave.leaveType, color: 'bg-warning/10 text-warning border-warning/20' };
-      }
-      return { type: 'leave', label: 'On Leave', subLabel: leave.leaveType, color: 'bg-destructive/10 text-destructive border-destructive/20' };
-    }
-
-    // 3. Check Holidays
-    const holiday = data.holidays?.find((h: any) => isSameDay(new Date(h.date), day));
-    if (holiday) return { type: 'holiday', holidayType: holiday.holidayType, label: holiday.holidayName, color: 'bg-primary/10 text-primary border-primary/20' };
-
-    // 4. Default for past weekdays
     const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
-    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+    const isBeforeJoining = data.user?.joiningDate && day < new Date(new Date(data.user.joiningDate).setHours(0, 0, 0, 0));
 
-    if (isPast && !isWeekend) {
-      // If they joined after this day, don't mark as absent
-      if (data.user?.joiningDate && day < new Date(data.user.joiningDate)) {
-        return { type: 'not-joined', label: '-', color: 'bg-muted/50 text-muted-foreground border-transparent' };
-      }
-      return { type: 'unmarked', label: 'Absent', subLabel: 'No punch', color: 'bg-destructive/10 text-destructive border-destructive/20' };
+    if (isWeekend && !attendance && !leave) {
+      return {
+        isWeeklyOff: true,
+        label: 'Weekly Off',
+        color: 'bg-muted/30 text-muted-foreground border-transparent'
+      };
     }
 
-    return null; // Future or weekend
+    if (isBeforeJoining && !attendance && !leave) {
+      return {
+        isBeforeJoining: true,
+        label: '-',
+        color: 'bg-muted/20 text-muted-foreground border-transparent'
+      };
+    }
+
+    const getStyle = (type: string) => {
+      switch (type) {
+        case 'present':
+          return 'bg-success/10 text-success border-success/30';
+        case 'late':
+          return 'bg-warning/15 text-warning border-warning/30';
+        case 'leave':
+          return 'bg-warning/15 text-warning border-warning/30';
+        case 'absent':
+          return 'bg-destructive/10 text-destructive border-destructive/30';
+        default:
+          return 'bg-muted/40 text-muted-foreground border-border';
+      }
+    };
+
+    // FIRST HALF
+    let firstHalf: any = { label: 'Absent', color: getStyle('absent') };
+
+    if (leave && (leave.duration === 'full_day' || leave.halfDaySession === 'first_half')) {
+      firstHalf = { label: leave.leaveType || 'Leave', color: getStyle('leave') };
+    } else if (attendance?.firstHalf?.status === 'leave') {
+      firstHalf = { label: attendance.firstHalf.leaveType || 'Leave', color: getStyle('leave') };
+    } else if (attendance?.firstHalf?.status === 'present' || attendance?.firstHalf?.status === 'late' || attendance?.firstHalf?.checkIn || attendance?.sessions?.[0]?.checkIn || (attendance?.loginTime && (!leave || leave.halfDaySession === 'second_half') && attendance?.status !== 'absent')) {
+      const isLate = attendance?.firstHalf?.status === 'late' || (attendance?.sessions?.[0]?.lateMinutes > 0);
+      const lateMins = attendance?.firstHalf?.lateMinutes || attendance?.sessions?.[0]?.lateMinutes;
+      firstHalf = {
+        label: isLate ? `Late ${lateMins ? `(${lateMins}m)` : ''}` : 'Present',
+        color: getStyle(isLate ? 'late' : 'present')
+      };
+    } else if (attendance?.firstHalf?.status === 'absent' || attendance?.status === 'absent') {
+      firstHalf = { label: 'Absent', color: getStyle('absent') };
+    } else if (!isPast && !attendance) {
+      firstHalf = { label: '-', color: getStyle('none') };
+    }
+
+    // SECOND HALF
+    let secondHalf: any = { label: 'Absent', color: getStyle('absent') };
+
+    if (leave && (leave.duration === 'full_day' || leave.halfDaySession === 'second_half')) {
+      secondHalf = { label: leave.leaveType || 'Leave', color: getStyle('leave') };
+    } else if (attendance?.secondHalf?.status === 'leave') {
+      secondHalf = { label: attendance.secondHalf.leaveType || 'Leave', color: getStyle('leave') };
+    } else if (attendance?.secondHalf?.status === 'present' || attendance?.secondHalf?.status === 'late' || attendance?.secondHalf?.checkIn || attendance?.sessions?.[1]?.checkIn) {
+      const isLate = attendance?.secondHalf?.status === 'late' || (attendance?.sessions?.[1]?.lateMinutes > 0);
+      const lateMins = attendance?.secondHalf?.lateMinutes || attendance?.sessions?.[1]?.lateMinutes;
+      secondHalf = {
+        label: isLate ? `Late ${lateMins ? `(${lateMins}m)` : ''}` : 'Present',
+        color: getStyle(isLate ? 'late' : 'present')
+      };
+    } else if (attendance?.secondHalf?.status === 'absent' || attendance?.status === 'absent') {
+      secondHalf = { label: 'Absent', color: getStyle('absent') };
+    } else if (!isPast && !attendance) {
+      secondHalf = { label: '-', color: getStyle('none') };
+    }
+
+    return {
+      firstHalf,
+      secondHalf
+    };
   };
 
-  const handleDayClick = (day: Date, status: any) => {
+  const handleDayClick = (day: Date, details: any) => {
     if (!isAdmin || !selectedUser) return;
 
-    if (status?.type === 'holiday' && ['public', 'company'].includes(status.holidayType)) {
-      toast.error('Cannot mark attendance on a Public or Company Holiday. It is a mandatory paid leave.');
+    if (details?.isHoliday) {
+      toast.error('Cannot mark attendance on a Public or Company Holiday.');
       return;
     }
 
@@ -141,61 +211,107 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
       return current >= from && current <= to;
     });
 
-    const userShiftSessions = data?.user?.shiftId?.sessions || [];
-    let initialSessions: any[] = [];
+    const fh = attendance?.firstHalf || {};
+    const sh = attendance?.secondHalf || {};
 
-    if (attendance && attendance.sessions?.length > 0) {
-      initialSessions = attendance.sessions.map((s: any) => ({
-        order: s.sessionOrder,
-        checkIn: s.checkIn ? format(new Date(s.checkIn), 'HH:mm') : '',
-        checkOut: s.checkOut ? format(new Date(s.checkOut), 'HH:mm') : '',
-      }));
-    } else if (userShiftSessions.length > 0) {
-      initialSessions = userShiftSessions.map((s: any) => ({
-        order: s.order,
-        checkIn: '',
-        checkOut: '',
-      }));
-    } else {
-      initialSessions = [{ order: 1, checkIn: '', checkOut: '' }];
-    }
+    const fhIn = fh.checkIn ? format(new Date(fh.checkIn), 'HH:mm') : (attendance?.sessions?.[0]?.checkIn ? format(new Date(attendance.sessions[0].checkIn), 'HH:mm') : '');
+    const fhOut = fh.checkOut ? format(new Date(fh.checkOut), 'HH:mm') : (attendance?.sessions?.[0]?.checkOut ? format(new Date(attendance.sessions[0].checkOut), 'HH:mm') : '');
 
-    if (attendance) {
-      setEditData({
-        status: attendance.status === 'late' ? 'present' : attendance.status,
-        duration: 'full_day',
-        halfDaySession: 'first_half',
-        sessions: initialSessions
-      });
-    } else if (leave) {
-      setEditData({
-        status: leave.leaveType,
-        duration: leave.duration || 'full_day',
-        halfDaySession: leave.halfDaySession || 'first_half',
-        sessions: initialSessions
-      });
-    } else {
-      setEditData({ status: 'present', duration: 'full_day', halfDaySession: 'first_half', sessions: initialSessions });
-    }
+    const shIn = sh.checkIn ? format(new Date(sh.checkIn), 'HH:mm') : (attendance?.sessions?.[1]?.checkIn ? format(new Date(attendance.sessions[1].checkIn), 'HH:mm') : '');
+    const shOut = sh.checkOut ? format(new Date(sh.checkOut), 'HH:mm') : (attendance?.sessions?.[1]?.checkOut ? format(new Date(attendance.sessions[1].checkOut), 'HH:mm') : '');
+
+    const firstStatus = fh.status || (leave && leave.halfDaySession === 'first_half' ? 'leave' : (attendance ? (attendance.status === 'absent' ? 'absent' : 'present') : 'present'));
+    const secondStatus = sh.status || (leave && leave.halfDaySession === 'second_half' ? 'leave' : (attendance ? (attendance.status === 'absent' ? 'absent' : 'present') : 'present'));
+
+    setEditData({
+      status: attendance?.status || (leave ? leave.leaveType : 'present'),
+      duration: leave?.duration || 'full_day',
+      halfDaySession: leave?.halfDaySession || 'first_half',
+      firstHalfStatus: firstStatus,
+      firstHalfLeaveType: fh.leaveType || leave?.leaveType || 'Casual Leave',
+      firstHalfIn: fhIn,
+      firstHalfOut: fhOut,
+      secondHalfStatus: secondStatus,
+      secondHalfLeaveType: sh.leaveType || leave?.leaveType || 'Casual Leave',
+      secondHalfIn: shIn,
+      secondHalfOut: shOut
+    });
   };
 
   const handleSaveEdit = async () => {
     if (!selectedDate || !selectedUser) return;
     setIsSaving(true);
+
     try {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+
+      const firstHalfPayload = {
+        status: editData.firstHalfStatus,
+        leaveType: editData.firstHalfStatus === 'leave' ? editData.firstHalfLeaveType : null,
+        checkIn: editData.firstHalfIn ? `${dateStr}T${editData.firstHalfIn}:00+05:30` : null,
+        checkOut: editData.firstHalfOut ? `${dateStr}T${editData.firstHalfOut}:00+05:30` : null
+      };
+
+      const secondHalfPayload = {
+        status: editData.secondHalfStatus,
+        leaveType: editData.secondHalfStatus === 'leave' ? editData.secondHalfLeaveType : null,
+        checkIn: editData.secondHalfIn ? `${dateStr}T${editData.secondHalfIn}:00+05:30` : null,
+        checkOut: editData.secondHalfOut ? `${dateStr}T${editData.secondHalfOut}:00+05:30` : null
+      };
+
+      const sessionsPayload = [
+        { order: 1, checkIn: editData.firstHalfIn, checkOut: editData.firstHalfOut },
+        { order: 2, checkIn: editData.secondHalfIn, checkOut: editData.secondHalfOut }
+      ];
+
+      let overallStatus = editData.status;
+      let duration = editData.duration;
+      let halfDaySession = editData.halfDaySession;
+
+      if (overallStatus !== 'none' && overallStatus !== 'clear') {
+        const fh = editData.firstHalfStatus;
+        const sh = editData.secondHalfStatus;
+
+        if (fh === 'absent' && sh === 'absent') {
+          overallStatus = 'absent';
+        } else if (fh === 'present' && sh === 'present') {
+          overallStatus = 'present';
+        } else if (fh === 'leave' && sh === 'leave') {
+          overallStatus = editData.firstHalfLeaveType || 'Casual Leave';
+          duration = 'full_day';
+        } else if (fh === 'leave') {
+          overallStatus = editData.firstHalfLeaveType || 'Casual Leave';
+          duration = 'half_day';
+          halfDaySession = 'first_half';
+        } else if (sh === 'leave') {
+          overallStatus = editData.secondHalfLeaveType || 'Casual Leave';
+          duration = 'half_day';
+          halfDaySession = 'second_half';
+        } else if ((fh === 'absent' && sh === 'present') || (fh === 'present' && sh === 'absent')) {
+          overallStatus = 'half-day';
+        }
+      }
+
       const res = await api('/api/admin/attendance/override', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: selectedUser,
-          date: format(selectedDate, 'yyyy-MM-dd'),
-          ...editData
+          date: dateStr,
+          status: overallStatus,
+          duration,
+          halfDaySession,
+          sessions: sessionsPayload,
+          firstHalf: firstHalfPayload,
+          secondHalf: secondHalfPayload
         })
       });
+
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Failed to update attendance');
       }
+      toast.success('Attendance updated successfully');
       await mutate();
       setIsEditModalOpen(false);
     } catch (error: any) {
@@ -241,13 +357,11 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
           const now = new Date().setHours(0, 0, 0, 0);
 
           const isHoliday = exportData.holidays?.some((h: any) => isSameDay(new Date(h.date), day));
-
           const leave = exportData.leaves?.find((l: any) => {
             const from = new Date(l.fromDate).setHours(0, 0, 0, 0);
             const to = new Date(l.toDate).setHours(0, 0, 0, 0);
             return l.userId === user._id && currentDay >= from && currentDay <= to;
           });
-
           const att = exportData.attendances?.find((a: any) => a.userId === user._id && isSameDay(new Date(a.date), day));
 
           if (att) {
@@ -338,8 +452,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
 
       <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <div className="min-w-[700px] lg:min-w-full">
-            {/* Calendar Header */}
+          <div className="min-w-[750px] lg:min-w-full">
             <div className="grid grid-cols-7 border-b border-border bg-muted/30">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                 <div key={day} className="py-3 text-center text-xs font-bold text-muted-foreground uppercase tracking-widest">
@@ -348,7 +461,6 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
               ))}
             </div>
 
-            {/* Calendar Grid */}
             <div className="relative">
               {isLoading && (
                 <div className="absolute inset-0 z-10 bg-background/50 backdrop-blur-sm flex items-center justify-center">
@@ -361,25 +473,25 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
                 </div>
               )}
               <div className="grid grid-cols-7 auto-rows-fr bg-border gap-[1px]">
-                {daysInMonth.map((day, idx) => {
-                  const status = getDayStatus(day);
+                {daysInMonth.map((day) => {
+                  const details = getDayDetails(day);
                   const isCurrentMonth = isSameMonth(day, currentDate);
                   const today = isToday(day);
 
                   return (
                     <div
                       key={day.toString()}
-                      onClick={() => handleDayClick(day, status)}
+                      onClick={() => handleDayClick(day, details)}
                       className={clsx(
-                        "min-h-[100px] sm:min-h-[120px] bg-card p-1.5 sm:p-2 transition-colors relative group",
+                        "min-h-[110px] sm:min-h-[130px] bg-card p-1.5 sm:p-2 transition-colors relative group flex flex-col justify-between",
                         !isCurrentMonth && "bg-card/50 opacity-50",
                         today && "ring-1 ring-inset ring-primary/50 bg-primary/5",
                         isAdmin && selectedUser && "cursor-pointer hover:bg-accent"
                       )}
                     >
-                      <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+                      <div className="flex items-center justify-between mb-1">
                         <span className={clsx(
-                          "text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full",
+                          "text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full",
                           today ? "bg-primary text-primary-foreground" : isCurrentMonth ? "text-card-foreground" : "text-muted-foreground/50",
                           (day.getDay() === 0 || day.getDay() === 6) && isCurrentMonth && !today && "text-destructive"
                         )}>
@@ -387,10 +499,33 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
                         </span>
                       </div>
 
-                      {status && (
-                        <div className={clsx("px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-md border text-xs", status.color)}>
-                          <div className="font-semibold text-[11px] sm:text-xs truncate">{status.label}</div>
-                          {status.subLabel && <div className="text-[9px] sm:text-[10px] opacity-80 mt-0.5 truncate">{status.subLabel}</div>}
+                      {details && details.isHoliday && (
+                        <div className="px-1.5 py-1 rounded-md border text-[11px] font-bold bg-primary/10 text-primary border-primary/20 truncate">
+                          {details.label}
+                        </div>
+                      )}
+
+                      {details && details.isWeeklyOff && (
+                        <div className="px-1.5 py-1 rounded-md border text-[11px] font-semibold bg-muted/40 text-muted-foreground border-transparent truncate">
+                          Weekly Off
+                        </div>
+                      )}
+
+                      {details && details.isBeforeJoining && (
+                        <div className="text-center text-xs text-muted-foreground">-</div>
+                      )}
+
+                      {details && details.firstHalf && details.secondHalf && (
+                        <div className="space-y-1">
+                          <div className={clsx("px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center justify-between", details.firstHalf.color)}>
+                            <span className="opacity-70 text-[9px] mr-1 uppercase">1st</span>
+                            <span className="truncate">{details.firstHalf.label}</span>
+                          </div>
+
+                          <div className={clsx("px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center justify-between", details.secondHalf.color)}>
+                            <span className="opacity-70 text-[9px] mr-1 uppercase">2nd</span>
+                            <span className="truncate">{details.secondHalf.label}</span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -402,106 +537,188 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit Modal supporting separate First Half & Second Half entry */}
       {isEditModalOpen && selectedDate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-xl animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="text-lg font-bold text-card-foreground mb-4 border-b border-border pb-4">
-              Edit Attendance - {format(selectedDate, 'MMM d, yyyy')}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-lg shadow-xl animate-in fade-in zoom-in-95 duration-200 my-8">
+            <h3 className="text-lg font-bold text-card-foreground mb-4 border-b border-border pb-3 flex items-center justify-between">
+              <span>Edit Attendance & Leaves</span>
+              <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold">
+                {format(selectedDate, 'MMM d, yyyy')}
+              </span>
             </h3>
-            <div className="space-y-4">
+
+            <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+              {/* Quick Preset Action */}
               <div>
-                <label className="block text-sm font-bold text-card-foreground mb-1.5">Status</label>
+                <label className="block text-xs font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">Quick Action / Full Day Status</label>
                 <select
-                  className="w-full bg-background border border-border text-foreground rounded-xl p-2.5 min-h-[44px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none"
+                  className="w-full bg-background border border-border text-foreground text-sm font-bold rounded-xl p-2.5 min-h-[44px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none"
                   value={editData.status}
-                  onChange={e => setEditData({ ...editData, status: e.target.value })}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val === 'present') {
+                      setEditData({
+                        ...editData,
+                        status: 'present',
+                        firstHalfStatus: 'present',
+                        secondHalfStatus: 'present'
+                      });
+                    } else if (val === 'absent') {
+                      setEditData({
+                        ...editData,
+                        status: 'absent',
+                        firstHalfStatus: 'absent',
+                        secondHalfStatus: 'absent'
+                      });
+                    } else if (val === 'none') {
+                      setEditData({
+                        ...editData,
+                        status: 'none',
+                        firstHalfStatus: 'absent',
+                        firstHalfIn: '',
+                        firstHalfOut: '',
+                        secondHalfStatus: 'absent',
+                        secondHalfIn: '',
+                        secondHalfOut: ''
+                      });
+                    } else {
+                      setEditData({ ...editData, status: val });
+                    }
+                  }}
                 >
-                  <optgroup label="Attendance">
-                    <option value="none">None (Clear Record)</option>
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
-                    <option value="half-day">Half Day</option>
-                  </optgroup>
-                  <optgroup label="Leaves">
-                    <option value="Sick Leave">Sick Leave</option>
-                    <option value="Casual Leave">Casual Leave</option>
-                    <option value="Compensatory Off">Compensatory Off</option>
-                    <option value="Restricted Holiday">Restricted Holiday</option>
-                    <option value="Maternity Leave">Maternity Leave</option>
-                    <option value="Paternity Leave">Paternity Leave</option>
-                    <option value="Leave Without Pay">Leave Without Pay</option>
+                  <option value="present">Present (Full Day Work)</option>
+                  <option value="absent">Absent (Full Day)</option>
+                  <option value="none">Clear Record</option>
+                  <optgroup label="Apply Full Day Leave">
+                    {LEAVE_TYPES.map(lt => (
+                      <option key={lt} value={lt}>{lt}</option>
+                    ))}
                   </optgroup>
                 </select>
               </div>
 
-              {!['none', 'present', 'absent', 'half-day'].includes(editData.status) && (
-                <>
+              {/* FIRST HALF EDIT SECTION */}
+              <div className="p-4 border border-primary/30 rounded-xl bg-primary/5 space-y-3">
+                <div className="font-bold text-sm text-primary flex items-center justify-between">
+                  <span className="flex items-center"><Clock className="w-4 h-4 mr-1.5" /> First Half (Session 1)</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-bold text-card-foreground mb-1.5">Leave Duration</label>
+                    <label className="block text-xs font-bold text-card-foreground mb-1">Status / Leave</label>
                     <select
-                      className="w-full bg-background border border-border text-foreground rounded-xl p-2.5 min-h-[44px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none"
-                      value={editData.duration}
-                      onChange={e => setEditData({ ...editData, duration: e.target.value })}
+                      className="w-full bg-background border border-border text-foreground text-xs font-bold rounded-lg p-2 min-h-[38px] focus:ring-1 focus:ring-primary focus:outline-none"
+                      value={editData.firstHalfStatus}
+                      onChange={e => setEditData({ ...editData, firstHalfStatus: e.target.value })}
                     >
-                      <option value="full_day">Full Day</option>
-                      <option value="half_day">Half Day</option>
+                      <option value="present">Present</option>
+                      <option value="absent">Absent</option>
+                      <option value="leave">Leave</option>
                     </select>
                   </div>
-                  {editData.duration === 'half_day' && (
+
+                  {editData.firstHalfStatus === 'leave' && (
                     <div>
-                      <label className="block text-sm font-bold text-card-foreground mb-1.5">Half Day Session</label>
+                      <label className="block text-xs font-bold text-card-foreground mb-1">Leave Type</label>
                       <select
-                        className="w-full bg-background border border-border text-foreground rounded-xl p-2.5 min-h-[44px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none"
-                        value={editData.halfDaySession}
-                        onChange={e => setEditData({ ...editData, halfDaySession: e.target.value })}
+                        className="w-full bg-background border border-border text-foreground text-xs font-bold rounded-lg p-2 min-h-[38px] focus:ring-1 focus:ring-primary focus:outline-none"
+                        value={editData.firstHalfLeaveType}
+                        onChange={e => setEditData({ ...editData, firstHalfLeaveType: e.target.value })}
                       >
-                        <option value="first_half">First Half (Morning)</option>
-                        <option value="second_half">Second Half (Afternoon)</option>
+                        {LEAVE_TYPES.map(lt => (
+                          <option key={lt} value={lt}>{lt}</option>
+                        ))}
                       </select>
                     </div>
                   )}
-                </>
-              )}
-
-              {['present', 'half-day'].includes(editData.status) && (
-                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
-                  {editData.sessions.map((session: any, index: number) => (
-                    <div key={index} className="p-3 bg-muted/50 rounded-xl space-y-3">
-                      <div className="font-bold text-sm text-card-foreground">Session {session.order}</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-bold text-muted-foreground mb-1">Check In</label>
-                          <input
-                            type="time"
-                            className="w-full bg-background border border-border text-foreground rounded-xl p-2 min-h-[40px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none text-sm"
-                            value={session.checkIn}
-                            onChange={e => {
-                              const newSessions = [...editData.sessions];
-                              newSessions[index].checkIn = e.target.value;
-                              setEditData({ ...editData, sessions: newSessions });
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-muted-foreground mb-1">Check Out</label>
-                          <input
-                            type="time"
-                            className="w-full bg-background border border-border text-foreground rounded-xl p-2 min-h-[40px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none text-sm"
-                            value={session.checkOut}
-                            onChange={e => {
-                              const newSessions = [...editData.sessions];
-                              newSessions[index].checkOut = e.target.value;
-                              setEditData({ ...editData, sessions: newSessions });
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
-              )}
+
+                {editData.firstHalfStatus !== 'leave' && editData.firstHalfStatus !== 'absent' && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground mb-1">Check In Time</label>
+                      <input
+                        type="time"
+                        className="w-full bg-background border border-border text-foreground text-xs font-bold rounded-lg p-2 min-h-[38px] focus:ring-1 focus:ring-primary focus:outline-none"
+                        value={editData.firstHalfIn}
+                        onChange={e => setEditData({ ...editData, firstHalfIn: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground mb-1">Check Out Time</label>
+                      <input
+                        type="time"
+                        className="w-full bg-background border border-border text-foreground text-xs font-bold rounded-lg p-2 min-h-[38px] focus:ring-1 focus:ring-primary focus:outline-none"
+                        value={editData.firstHalfOut}
+                        onChange={e => setEditData({ ...editData, firstHalfOut: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECOND HALF EDIT SECTION */}
+              <div className="p-4 border border-border rounded-xl bg-muted/20 space-y-3">
+                <div className="font-bold text-sm text-card-foreground flex items-center justify-between">
+                  <span className="flex items-center"><Clock className="w-4 h-4 mr-1.5 text-muted-foreground" /> Second Half (Session 2)</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-card-foreground mb-1">Status / Leave</label>
+                    <select
+                      className="w-full bg-background border border-border text-foreground text-xs font-bold rounded-lg p-2 min-h-[38px] focus:ring-1 focus:ring-primary focus:outline-none"
+                      value={editData.secondHalfStatus}
+                      onChange={e => setEditData({ ...editData, secondHalfStatus: e.target.value })}
+                    >
+                      <option value="present">Present</option>
+                      <option value="absent">Absent</option>
+                      <option value="leave">Leave</option>
+                    </select>
+                  </div>
+
+                  {editData.secondHalfStatus === 'leave' && (
+                    <div>
+                      <label className="block text-xs font-bold text-card-foreground mb-1">Leave Type</label>
+                      <select
+                        className="w-full bg-background border border-border text-foreground text-xs font-bold rounded-lg p-2 min-h-[38px] focus:ring-1 focus:ring-primary focus:outline-none"
+                        value={editData.secondHalfLeaveType}
+                        onChange={e => setEditData({ ...editData, secondHalfLeaveType: e.target.value })}
+                      >
+                        {LEAVE_TYPES.map(lt => (
+                          <option key={lt} value={lt}>{lt}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {editData.secondHalfStatus !== 'leave' && editData.secondHalfStatus !== 'absent' && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground mb-1">Check In Time</label>
+                      <input
+                        type="time"
+                        className="w-full bg-background border border-border text-foreground text-xs font-bold rounded-lg p-2 min-h-[38px] focus:ring-1 focus:ring-primary focus:outline-none"
+                        value={editData.secondHalfIn}
+                        onChange={e => setEditData({ ...editData, secondHalfIn: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground mb-1">Check Out Time</label>
+                      <input
+                        type="time"
+                        className="w-full bg-background border border-border text-foreground text-xs font-bold rounded-lg p-2 min-h-[38px] focus:ring-1 focus:ring-primary focus:outline-none"
+                        value={editData.secondHalfOut}
+                        onChange={e => setEditData({ ...editData, secondHalfOut: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
               <button
                 onClick={() => setIsEditModalOpen(false)}

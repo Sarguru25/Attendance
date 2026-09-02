@@ -2,9 +2,14 @@ import mongoose, { Document, Model, Schema } from 'mongoose';
 
 export interface IShiftSession {
   order: number;
-  startTime: string; // e.g. "07:30"
-  endTime: string;   // e.g. "16:30"
+  startTime: string; // e.g. "09:00"
+  endTime: string;   // e.g. "13:00"
   graceTime: number; // in minutes
+}
+
+export interface IHalfDayTiming {
+  startTime: string; // e.g. "09:00"
+  endTime: string;   // e.g. "13:30"
 }
 
 export interface IShift extends Document {
@@ -13,6 +18,8 @@ export interface IShift extends Document {
   workingDays: string[];
   isActive: boolean;
   sessions: IShiftSession[];
+  firstHalf?: IHalfDayTiming;
+  secondHalf?: IHalfDayTiming;
   // Legacy fields for backward compatibility during transition
   startTime?: string;
   endTime?: string;
@@ -26,6 +33,11 @@ const SessionSchema = new Schema({
   graceTime: { type: Number, default: 0 }
 }, { _id: false });
 
+const HalfDayTimingSchema = new Schema({
+  startTime: { type: String, required: false },
+  endTime: { type: String, required: false }
+}, { _id: false });
+
 const ShiftSchema: Schema = new Schema(
   {
     companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: false },
@@ -33,6 +45,8 @@ const ShiftSchema: Schema = new Schema(
     workingDays: [{ type: String }],
     isActive: { type: Boolean, default: true },
     sessions: { type: [SessionSchema], default: [] },
+    firstHalf: { type: HalfDayTimingSchema, required: false },
+    secondHalf: { type: HalfDayTimingSchema, required: false },
     // Legacy fields
     startTime: { type: String },
     endTime: { type: String },

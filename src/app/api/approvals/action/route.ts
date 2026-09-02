@@ -68,6 +68,9 @@ export async function POST(req: NextRequest) {
     // If approved, handle side effects
     if (status === 'approved') {
       if (requestType === 'LEAVE') {
+        const { syncLeaveToAttendance } = await import('@/lib/halfDayUtils');
+        await syncLeaveToAttendance(request, status === 'approved');
+
         const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
         await LeaveBalanceEngine.syncLeaveBalance(request.userId.toString());
         const user = await User.findById(request.userId);
@@ -110,13 +113,13 @@ export async function POST(req: NextRequest) {
         }
       } else if (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION') {
         let attendance;
-        
+
         if (requestType === 'MISS_PUNCH') {
           const d = new Date(request.date);
           const startOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
           const endOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
           attendance = await Attendance.findOne({ userId: request.employeeId, date: { $gte: startOfDay, $lte: endOfDay } });
-          
+
           if (!attendance) {
             attendance = new Attendance({
               userId: request.employeeId,
@@ -131,45 +134,49 @@ export async function POST(req: NextRequest) {
         if (attendance) {
           if (request.requestedCheckIn) attendance.loginTime = request.requestedCheckIn;
           if (request.requestedCheckOut) attendance.logoutTime = request.requestedCheckOut;
-          
-          if (attendance.loginTime && attendance.logoutTime) {
-            attendance.totalHours = (new Date(attendance.logoutTime).getTime() - new Date(attendance.loginTime).getTime()) / (1000 * 60 * 60);
-          }
 
-          attendance.status = 'present';
-          attendance.lateMinutes = 0;
-          
           const user = await User.findById(attendance.userId).populate('shiftId');
-          if (attendance.loginTime && user?.shiftId && (user.shiftId as any).sessions?.length > 0) {
-             const shiftFirstSession = (user.shiftId as any).sessions.sort((a: any, b: any) => a.order - b.order)[0];
-             const [startH, startM] = shiftFirstSession.startTime.split(':').map(Number);
-             const graceTime = shiftFirstSession.graceTime || 0;
-             const shiftStartMinutes = startH * 60 + startM;
-             
-             const loginTimeStr = new Date(attendance.loginTime).toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
-             const [loginH, loginM] = loginTimeStr.split(':').map(Number);
-             const loginMinutes = loginH * 60 + loginM;
-             
-             if (loginMinutes > shiftStartMinutes + graceTime) {
-               attendance.status = 'late';
-               attendance.lateMinutes = loginMinutes - shiftStartMinutes;
-             }
-          }
-          
+          const Leave = (await import('@/models/Leave')).default;
+          const attendanceDate = new Date(attendance.date);
+          const startOfDay = new Date(Date.UTC(attendanceDate.getUTCFullYear(), attendanceDate.getUTCMonth(), attendanceDate.getUTCDate(), 0, 0, 0, 0));
+          const endOfDay = new Date(Date.UTC(attendanceDate.getUTCFullYear(), attendanceDate.getUTCMonth(), attendanceDate.getUTCDate(), 23, 59, 59, 999));
+
+          const approvedLeaves = await Leave.find({
+            userId: attendance.userId,
+            status: 'approved',
+            fromDate: { $lte: endOfDay },
+            toDate: { $gte: startOfDay }
+          }).lean();
+
+          const { calculateDailyAttendance } = await import('@/lib/halfDayUtils');
+          const calc = calculateDailyAttendance({
+            shift: user?.shiftId,
+            date: attendance.date,
+            existingAttendance: attendance,
+            approvedLeaves
+          });
+
+          attendance.firstHalf = calc.firstHalf;
+          attendance.secondHalf = calc.secondHalf;
+          attendance.status = calc.finalStatus;
+          attendance.totalHours = calc.totalWorkedHours;
+          attendance.paidLeaveDays = calc.paidLeaveDays;
+          attendance.unpaidLeaveDays = calc.unpaidLeaveDays;
+          attendance.lateMinutes = calc.lateMinutes;
+
           await attendance.save();
 
           // Handle Comp-Off logic for Miss Punch / Correction approval
           const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-          const attendanceDate = new Date(attendance.date);
           const dayName = dayNames[attendanceDate.getDay()];
           const shift = user?.shiftId as any;
           const isWeeklyOff = shift && (!shift.workingDays || !shift.workingDays.includes(dayName));
-          
+
           const Holiday = (await import('@/models/Holiday')).default;
           const startOfAttendanceDay = new Date(attendanceDate);
-          startOfAttendanceDay.setHours(0,0,0,0);
+          startOfAttendanceDay.setHours(0, 0, 0, 0);
           const endOfAttendanceDay = new Date(attendanceDate);
-          endOfAttendanceDay.setHours(23,59,59,999);
+          endOfAttendanceDay.setHours(23, 59, 59, 999);
 
           const holiday = await Holiday.findOne({
             date: { $gte: startOfAttendanceDay, $lte: endOfAttendanceDay },
@@ -178,24 +185,24 @@ export async function POST(req: NextRequest) {
           const isHoliday = !!holiday;
 
           if (isWeeklyOff || isHoliday) {
-             const CompOffCredit = (await import('@/models/CompOffCredit')).default;
-             const existingCredit = await CompOffCredit.findOne({ employeeId: attendance.userId, attendanceDate });
-             if (!existingCredit) {
-                const expiry = new Date(attendanceDate);
-                expiry.setMonth(expiry.getMonth() + 3);
-                await CompOffCredit.create({
-                  employeeId: attendance.userId,
-                  attendanceDate,
-                  earnedDate: new Date(),
-                  availableFromDate: new Date(),
-                  expiryDate: expiry,
-                  companyId: user?.companyId,
-                });
-                
-                // Sync leave balance to reflect new comp-off
-                const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
-                await LeaveBalanceEngine.syncLeaveBalance(attendance.userId.toString());
-             }
+            const CompOffCredit = (await import('@/models/CompOffCredit')).default;
+            const existingCredit = await CompOffCredit.findOne({ employeeId: attendance.userId, attendanceDate });
+            if (!existingCredit) {
+              const expiry = new Date(attendanceDate);
+              expiry.setMonth(expiry.getMonth() + 3);
+              await CompOffCredit.create({
+                employeeId: attendance.userId,
+                attendanceDate,
+                earnedDate: new Date(),
+                availableFromDate: new Date(),
+                expiryDate: expiry,
+                companyId: user?.companyId,
+              });
+
+              // Sync leave balance to reflect new comp-off
+              const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
+              await LeaveBalanceEngine.syncLeaveBalance(attendance.userId.toString());
+            }
           }
         }
       }

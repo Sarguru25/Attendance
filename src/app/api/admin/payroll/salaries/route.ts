@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
     await dbConnect();
     const users = await User.find({ role: { $ne: 'admin' }, isActive: true })
-      .select('name employeeId role department designation monthlySalary bankName accountNumber ifscCode salaryDeductions')
+      .select('name employeeId role department designation monthlySalary bankName accountNumber ifscCode salaryDeductions salaryTimelines joiningDate')
       .lean();
 
     return NextResponse.json({ users }, { status: 200 });

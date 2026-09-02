@@ -10,7 +10,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { shiftName, workingDays, sessions, isActive } = await req.json();
+    const { shiftName, workingDays, sessions, firstHalf, secondHalf, isActive } = await req.json();
 
     if (!shiftName || !workingDays || workingDays.length === 0 || !sessions || sessions.length === 0) {
       return NextResponse.json({ error: 'Missing required fields or sessions' }, { status: 400 });
@@ -43,6 +43,14 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
         shiftName, 
         workingDays, 
         sessions, 
+        firstHalf: firstHalf || {
+          startTime: sessions[0]?.startTime || '09:00',
+          endTime: sessions[0]?.endTime || '13:30'
+        },
+        secondHalf: secondHalf || {
+          startTime: sessions[1]?.startTime || '13:30',
+          endTime: sessions[sessions.length - 1]?.endTime || '18:00'
+        },
         isActive,
         startTime: sessions[0].startTime,
         endTime: sessions[sessions.length - 1].endTime,

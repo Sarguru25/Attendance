@@ -28,6 +28,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Leave request not found' }, { status: 404 });
     }
 
+    if (leave) {
+      const { syncLeaveToAttendance } = await import('@/lib/halfDayUtils');
+      await syncLeaveToAttendance(leave, status === 'approved');
+    }
+
     if (status === 'approved') {
       const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
       await LeaveBalanceEngine.syncLeaveBalance(leave.userId.toString());

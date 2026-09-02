@@ -3,8 +3,8 @@ import { auth } from '@/auth';
 import dbConnect from '@/lib/mongodb';
 import Attendance from '@/models/Attendance';
 import User from '@/models/User';
-import { differenceInMinutes } from 'date-fns';
-import { getActiveSessionInfo } from '@/lib/sessionUtils';
+import Leave from '@/models/Leave';
+import { calculateHalfSession } from '@/lib/halfDayUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,12 +16,10 @@ export async function POST(req: NextRequest) {
     await dbConnect();
     const userId = session.user.id;
     const now = new Date();
-    
-    // Get the current date in IST
+
     const istDateString = now.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata' });
     const [month, day, year] = istDateString.split('/');
-    
-    // Create UTC midnight representing the start of the day for the IST date
+
     const todayStart = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), 0, 0, 0, 0));
     const todayEnd = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), 23, 59, 59, 999));
 
@@ -31,12 +29,21 @@ export async function POST(req: NextRequest) {
     }
 
     const shift = user.shiftId as any;
-    if (!shift || !shift.sessions || shift.sessions.length === 0) {
-      return Response.json({ error: 'No shift or sessions assigned' }, { status: 400 });
+    if (!shift) {
+      return Response.json({ error: 'No shift assigned' }, { status: 400 });
     }
 
-    // Get IST current time HH:mm
-    const currentIstTime = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+    // Check for approved leave today
+    const approvedLeave = await Leave.findOne({
+      userId,
+      status: 'approved',
+      fromDate: { $lte: todayEnd },
+      toDate: { $gte: todayStart }
+    });
+
+    if (approvedLeave && approvedLeave.duration !== 'half_day') {
+      return Response.json({ error: 'You are on an approved full-day leave today.' }, { status: 400 });
+    }
 
     let existingAttendance = await Attendance.findOne({
       userId,
@@ -48,57 +55,99 @@ export async function POST(req: NextRequest) {
         userId,
         date: todayStart,
         shiftId: shift._id,
-        status: 'present',
+        status: approvedLeave ? 'half-day' : 'present',
         sessions: [],
         companyId: session.user.companyId,
       });
     }
 
-    const { activeSession, currentStatus, sessionState } = getActiveSessionInfo(
-      shift.sessions, 
-      existingAttendance.sessions, 
-      currentIstTime
-    );
+    const boundaries = calculateHalfSession(shift);
 
-    if (!activeSession) {
-      return Response.json({ error: 'No active session found at this time' }, { status: 400 });
+    let isFirstHalfLeave = approvedLeave?.duration === 'half_day' && approvedLeave?.halfDaySession === 'first_half';
+    let isSecondHalfLeave = approvedLeave?.duration === 'half_day' && approvedLeave?.halfDaySession === 'second_half';
+
+    if (existingAttendance.firstHalf?.checkIn && !existingAttendance.firstHalf?.checkOut && !isFirstHalfLeave) {
+      return Response.json({ error: 'You are already checked in for the First Half. Please check out first.' }, { status: 400 });
+    }
+    if (existingAttendance.secondHalf?.checkIn && !existingAttendance.secondHalf?.checkOut) {
+      return Response.json({ error: 'You are already checked in for the Second Half.' }, { status: 400 });
     }
 
-    if (currentStatus !== 'CAN_CHECK_IN') {
-      return Response.json({ error: 'You cannot check in at this time' }, { status: 400 });
+    let targetHalf: 'firstHalf' | 'secondHalf' = 'firstHalf';
+    let expectedStartTimeStr = boundaries.firstHalf.start;
+
+    if (isFirstHalfLeave) {
+      targetHalf = 'secondHalf';
+      expectedStartTimeStr = boundaries.secondHalf.start;
+    } else if (existingAttendance.firstHalf?.checkIn && existingAttendance.firstHalf?.checkOut) {
+      targetHalf = 'secondHalf';
+      expectedStartTimeStr = boundaries.secondHalf.start;
+    } else if (isSecondHalfLeave) {
+      targetHalf = 'firstHalf';
+      expectedStartTimeStr = boundaries.firstHalf.start;
     }
 
-    // Calculate expected login time
-    const [startHours, startMinutes] = activeSession.startTime.split(':');
-    const expectedLoginStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${startHours.padStart(2, '0')}:${startMinutes.padStart(2, '0')}:00+05:30`;
-    const expectedLoginTime = new Date(expectedLoginStr);
-    const graceTime = activeSession.graceTime || 0;
+    const [startH, startM] = expectedStartTimeStr.split(':').map(Number);
+    const currentIstTime = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const [curH, curM] = currentIstTime.split(':').map(Number);
 
-    const diffMins = differenceInMinutes(now, expectedLoginTime);
-    
+    const curMins = curH * 60 + curM;
+    const expectedMins = startH * 60 + startM;
+    const graceTime = (shift.sessions && shift.sessions[targetHalf === 'secondHalf' ? 1 : 0]?.graceTime) || shift.sessions?.[0]?.graceTime || 0;
+
     let lateMinutes = 0;
-    let sessionStatus = 'Pending';
-    
-    if (diffMins > graceTime) {
-      lateMinutes = diffMins;
-      sessionStatus = 'Pending'; // Will be 'Late' on checkout? No, let's keep it 'Pending' until checkout, or 'Late' if late checkout is missed. Actually, prompt: "If Late <= 0 Status On Time Else Late".
+    if (curMins > expectedMins + graceTime) {
+      lateMinutes = curMins - expectedMins;
     }
 
-    // Push new session
+    const sessionOrder = targetHalf === 'firstHalf' ? 1 : 2;
+
+    if (targetHalf === 'firstHalf') {
+      existingAttendance.firstHalf = {
+        status: lateMinutes > 0 ? 'late' : 'present',
+        checkIn: now,
+        lateMinutes
+      };
+      if (isSecondHalfLeave && approvedLeave) {
+        existingAttendance.secondHalf = {
+          status: 'leave',
+          leaveId: approvedLeave._id,
+          leaveType: approvedLeave.leaveType
+        };
+      }
+    } else {
+      existingAttendance.secondHalf = {
+        status: lateMinutes > 0 ? 'late' : 'present',
+        checkIn: now,
+        lateMinutes
+      };
+      if (isFirstHalfLeave && approvedLeave) {
+        existingAttendance.firstHalf = {
+          status: 'leave',
+          leaveId: approvedLeave._id,
+          leaveType: approvedLeave.leaveType
+        };
+      }
+    }
+
     existingAttendance.sessions.push({
-      sessionOrder: activeSession.order,
+      sessionOrder,
       checkIn: now,
       lateMinutes,
       status: 'Pending'
     });
-    
-    // For legacy UI
+
     if (existingAttendance.sessions.length === 1) {
       existingAttendance.loginTime = now;
       existingAttendance.lateMinutes = lateMinutes;
-      if (lateMinutes > 0) {
-        existingAttendance.status = 'late';
-      }
+    }
+
+    if (approvedLeave) {
+      existingAttendance.status = 'half-day';
+    } else if (existingAttendance.firstHalf?.status === 'late' || existingAttendance.secondHalf?.status === 'late') {
+      existingAttendance.status = 'late';
+    } else {
+      existingAttendance.status = 'present';
     }
 
     await existingAttendance.save();
@@ -108,7 +157,7 @@ export async function POST(req: NextRequest) {
       await Notification.create({
         targetRole: 'admin',
         type: 'LATE_CHECKIN',
-        message: `${user.name} checked in late by ${lateMinutes} minutes for Session ${activeSession.order}.`,
+        message: `${user.name} checked in late by ${lateMinutes} minutes for ${targetHalf === 'firstHalf' ? 'First Half' : 'Second Half'}.`,
         link: '/admin/attendance',
         companyId: session.user.companyId,
       });

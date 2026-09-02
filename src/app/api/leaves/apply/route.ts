@@ -36,7 +36,39 @@ export async function POST(req: NextRequest) {
 
     await dbConnect();
 
-    // Check for overlapping leaves
+    const user = await User.findById(session.user.id);
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // 1. Check Leave Policy allowHalfDay flag
+    if (duration === 'half_day') {
+      const LeavePolicy = (await import('@/models/LeavePolicy')).default;
+      const policy = await LeavePolicy.findOne({
+        $or: [
+          { leaveType: leaveType, companyId: user.companyId },
+          { name: leaveType, companyId: user.companyId },
+          { leaveType: leaveType },
+          { name: leaveType }
+        ]
+      });
+
+      if (policy && policy.allowHalfDay === false) {
+        return NextResponse.json({ error: `Half-day leaves are not permitted for ${leaveType}.` }, { status: 400 });
+      }
+    }
+
+    // 2. Check Holiday or Rest Day
+    const Holiday = (await import('@/models/Holiday')).default;
+    const isHoliday = await Holiday.exists({
+      date: { $gte: start, $lte: end },
+      holidayType: { $in: ['public', 'company'] }
+    });
+    if (isHoliday) {
+      return NextResponse.json({ error: 'Cannot apply for leave on a Public or Company Holiday.' }, { status: 400 });
+    }
+
+    // 3. Check for overlapping leaves
     const overlappingLeave = await Leave.findOne({
       userId: session.user.id,
       status: { $in: ['pending', 'approved'] },
@@ -46,11 +78,14 @@ export async function POST(req: NextRequest) {
     });
 
     if (overlappingLeave) {
-      if (duration === 'half_day' && overlappingLeave.duration === 'half_day' && overlappingLeave.fromDate.getTime() === start.getTime() && overlappingLeave.halfDaySession !== finalHalfDaySession) {
-         // Allow first half and second half on same day? Wait, requirements say: "Cannot submit: First Half + Second Half separately for same date"
-         return NextResponse.json({ error: 'Overlapping leave detected. You already have a half day leave on this date. Please apply for a full day leave instead.' }, { status: 400 });
+      if (duration === 'half_day' && overlappingLeave.duration === 'half_day') {
+        if (overlappingLeave.halfDaySession === finalHalfDaySession) {
+          return NextResponse.json({ error: `You already have a leave request for the ${finalHalfDaySession === 'first_half' ? 'First Half' : 'Second Half'} on this date.` }, { status: 400 });
+        } else {
+          return NextResponse.json({ error: 'You cannot apply for First Half and Second Half separately. Please apply for a full day leave instead.' }, { status: 400 });
+        }
       }
-      return NextResponse.json({ error: 'You already have a pending or approved leave during this period' }, { status: 400 });
+      return NextResponse.json({ error: 'You already have a pending or approved leave during this period.' }, { status: 400 });
     }
 
     const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
@@ -88,7 +123,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Supporting documents are required for this leave type.' }, { status: 400 });
     }
 
-    const user = await User.findById(session.user.id);
     let currentApprover = user?.reportsTo;
 
     // If there's no manager, try to find an admin to be the current approver

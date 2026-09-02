@@ -5,6 +5,7 @@ import Attendance from '@/models/Attendance';
 import Leave from '@/models/Leave';
 import Shift from '@/models/Shift';
 import { LeaveBalanceEngine } from '@/services/LeaveBalanceEngine';
+import { isLeaveTypePaid, syncLeaveToAttendance } from '@/lib/halfDayUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await req.json();
-    const { userId, date, status, sessions, duration = 'full_day', halfDaySession } = data; // date should be "YYYY-MM-DD"
+    const { userId, date, status, sessions, duration = 'full_day', halfDaySession, firstHalf: firstHalfInput, secondHalf: secondHalfInput } = data;
     const finalHalfDaySession = (halfDaySession === '' || !halfDaySession) ? null : halfDaySession;
 
     if (!userId || !date || !status) {
@@ -24,13 +25,12 @@ export async function POST(req: NextRequest) {
     await dbConnect();
 
     const User = (await import('@/models/User')).default;
-    await import('@/models/Shift'); // Ensure Shift model is registered before population
+    await import('@/models/Shift');
     const user = await User.findById(userId).populate('shiftId');
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Parse base date as UTC to prevent server timezone shifting
     const [year, month, day] = date.split('-');
     const attendanceDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), 0, 0, 0, 0));
 
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
         if (s.checkOut) {
           const [hours, minutes] = s.checkOut.split(':');
           checkOutTime = new Date(`${dateStr}T${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}:00+05:30`);
-          parsedLogoutTime = checkOutTime; // Will overwrite to be the last one
+          parsedLogoutTime = checkOutTime;
         }
 
         if (checkInTime && checkOutTime) {
@@ -76,18 +76,14 @@ export async function POST(req: NextRequest) {
     const attendanceTypes = ['present', 'absent', 'half-day', 'late'];
 
     if (status === 'none' || status === 'clear') {
-      // Remove existing attendance for this day
       await Attendance.findOneAndDelete({ userId, date: attendanceDate });
       
       const CompOffCredit = (await import('@/models/CompOffCredit')).default;
       await CompOffCredit.findOneAndDelete({ employeeId: userId, attendanceDate });
 
-      // Remove existing leave and refund
       const existingLeave = await Leave.findOneAndDelete({ userId, fromDate: attendanceDate, toDate: attendanceDate });
       
       if (existingLeave) {
-         // Refund balance
-         const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
          await LeaveBalanceEngine.syncLeaveBalance(userId);
          const user = await User.findById(userId);
          if (user && user.leaveBalance) {
@@ -131,7 +127,6 @@ export async function POST(req: NextRequest) {
       const isHalfDay = duration === 'half_day';
       const deductAmount = isHalfDay ? 0.5 : 1;
 
-      // It's a leave override
       const eligibility = await LeaveBalanceEngine.checkEligibility(userId, status, deductAmount);
       if (!eligibility.eligible) {
         return NextResponse.json({ error: eligibility.reason || 'Not eligible for this leave type' }, { status: 400 });
@@ -153,13 +148,9 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Remove existing attendance for this day so it doesn't conflict
-      await Attendance.findOneAndDelete({ userId, date: attendanceDate });
-      
       const CompOffCredit = (await import('@/models/CompOffCredit')).default;
       await CompOffCredit.findOneAndDelete({ employeeId: userId, attendanceDate });
 
-      // Create or update an approved leave record
       const existingLeave = await Leave.findOne({ userId, fromDate: attendanceDate, toDate: attendanceDate });
 
       const leave = await Leave.findOneAndUpdate(
@@ -178,12 +169,10 @@ export async function POST(req: NextRequest) {
       );
 
       if (!existingLeave || existingLeave.leaveType !== status) {
-        const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
         await LeaveBalanceEngine.syncLeaveBalance(userId);
         const user = await User.findById(userId);
         
         if (user && user.leaveBalance) {
-          // Refund old leave if changing types
           if (existingLeave) {
             const oldDeductAmount = existingLeave.numberOfDays || 1;
             if (existingLeave.leaveType === 'Casual Leave') {
@@ -215,7 +204,6 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // Deduct new leave
           if (status === 'Casual Leave') {
             user.leaveBalance.casualLeave.taken += deductAmount;
             user.leaveBalance.casualLeave.available -= deductAmount;
@@ -250,15 +238,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      await syncLeaveToAttendance(leave, true);
+
       return NextResponse.json({ message: 'Leave overridden successfully', leave });
     } else {
-      // It's an attendance override
-      // Remove any 1-day leave on this day if exists to prevent conflicts
       const existingLeave = await Leave.findOneAndDelete({ userId, fromDate: attendanceDate, toDate: attendanceDate });
       
       if (existingLeave) {
-         // Refund balance
-         const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
          await LeaveBalanceEngine.syncLeaveBalance(userId);
          const user = await User.findById(userId);
          if (user && user.leaveBalance) {
@@ -296,7 +282,6 @@ export async function POST(req: NextRequest) {
          }
       }
 
-      // Upsert attendance record
       const existingAttendanceObj = await Attendance.findOne({ userId, date: attendanceDate });
       const usedExtraMinutes = existingAttendanceObj ? (existingAttendanceObj.totalExtraMinutes! - existingAttendanceObj.availableExtraMinutes!) : 0;
 
@@ -318,10 +303,43 @@ export async function POST(req: NextRequest) {
       }
       const availableExtraMinutes = Math.max(0, totalExtraMinutes - usedExtraMinutes);
 
+      let firstHalfData = firstHalfInput ? {
+        status: firstHalfInput.status,
+        leaveType: firstHalfInput.leaveType || null,
+        checkIn: firstHalfInput.checkIn || null,
+        checkOut: firstHalfInput.checkOut || null
+      } : {
+        status: dbSessions[0]?.checkIn ? (dbSessions[0]?.lateMinutes > 0 ? 'late' : 'present') : (status === 'absent' ? 'absent' : null),
+        checkIn: dbSessions[0]?.checkIn || null,
+        checkOut: dbSessions[0]?.checkOut || null
+      };
+
+      let secondHalfData = secondHalfInput ? {
+        status: secondHalfInput.status,
+        leaveType: secondHalfInput.leaveType || null,
+        checkIn: secondHalfInput.checkIn || null,
+        checkOut: secondHalfInput.checkOut || null
+      } : {
+        status: dbSessions[1]?.checkIn ? (dbSessions[1]?.lateMinutes > 0 ? 'late' : 'present') : (status === 'absent' ? 'absent' : null),
+        checkIn: dbSessions[1]?.checkIn || null,
+        checkOut: dbSessions[1]?.checkOut || null
+      };
+
       let finalStatus = status;
       let lateMinutes = 0;
 
-      if (status === 'present' && sessions && sessions.length > 0 && user.shiftId && (user.shiftId as any).sessions?.length > 0) {
+      const fhStatus = firstHalfData.status;
+      const shStatus = secondHalfData.status;
+
+      if (fhStatus === 'absent' && shStatus === 'absent') {
+        finalStatus = 'absent';
+      } else if (fhStatus === 'present' && shStatus === 'present') {
+        finalStatus = 'present';
+      } else if ((fhStatus === 'absent' || fhStatus === 'leave') || (shStatus === 'absent' || shStatus === 'leave')) {
+        finalStatus = 'half-day';
+      }
+
+      if (finalStatus === 'present' && sessions && sessions.length > 0 && user.shiftId && (user.shiftId as any).sessions?.length > 0) {
         const sortedSessions = [...sessions].sort((a: any, b: any) => a.order - b.order);
         const firstCheckIn = sortedSessions.find(s => s.checkIn)?.checkIn;
         
@@ -349,6 +367,8 @@ export async function POST(req: NextRequest) {
             loginTime: parsedLoginTime,
             logoutTime: parsedLogoutTime,
             sessions: dbSessions,
+            firstHalf: firstHalfData,
+            secondHalf: secondHalfData,
             totalHours,
             scheduledMinutes,
             workedMinutes,
@@ -360,7 +380,6 @@ export async function POST(req: NextRequest) {
         { new: true, upsert: true }
       );
 
-      // Handle Comp-Off logic for manual override
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const dayName = dayNames[attendanceDate.getDay()];
       const shift = user?.shiftId as any;
@@ -375,16 +394,14 @@ export async function POST(req: NextRequest) {
         date: { $gte: startOfAttendanceDay, $lte: endOfAttendanceDay },
         holidayType: { $in: ['public', 'company'] }
       });
-      const isHoliday = !!holiday;
 
-      if (isHoliday && ['present', 'half-day', 'late'].includes(status)) {
+      if (holiday && ['present', 'half-day', 'late'].includes(status)) {
         return NextResponse.json({ error: `Cannot mark attendance on a ${holiday.holidayType === 'public' ? 'Public' : 'Company'} Holiday. It is a mandatory paid leave.` }, { status: 400 });
       }
 
       const CompOffCredit = (await import('@/models/CompOffCredit')).default;
-      if (isWeeklyOff || isHoliday) {
+      if (isWeeklyOff || !!holiday) {
         if (['present', 'half-day', 'late'].includes(status)) {
-          // Grant Comp-Off if not already granted
           const existingCredit = await CompOffCredit.findOne({ employeeId: userId, attendanceDate });
           if (!existingCredit) {
              const expiry = new Date(attendanceDate);
@@ -393,17 +410,15 @@ export async function POST(req: NextRequest) {
                employeeId: userId,
                attendanceDate,
                earnedDate: new Date(),
-               availableFromDate: new Date(), // Available immediately
+               availableFromDate: new Date(),
                expiryDate: expiry,
                companyId: user.companyId,
              });
           }
         } else {
-          // If changed to absent, remove Comp-Off
           await CompOffCredit.findOneAndDelete({ employeeId: userId, attendanceDate });
         }
       } else {
-        // If it's a regular working day, ensure no comp-off exists just in case
         await CompOffCredit.findOneAndDelete({ employeeId: userId, attendanceDate });
       }
 

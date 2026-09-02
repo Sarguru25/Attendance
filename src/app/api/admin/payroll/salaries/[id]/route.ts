@@ -30,7 +30,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (accountNumber !== undefined) user.accountNumber = accountNumber;
     if (ifscCode !== undefined) user.ifscCode = ifscCode;
     
-    if (user.role !== 'intern' && salaryDeductions) {
+    if (salaryDeductions) {
       if (!user.salaryDeductions) {
         user.salaryDeductions = {
           esi: { enabled: false, amount: 0 },
@@ -56,9 +56,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         
         if (salaryDeductions.loan.enabled && salaryDeductions.loan.totalMonths > 0) {
           user.salaryDeductions.loan.monthlyDeduction = salaryDeductions.loan.principalAmount / salaryDeductions.loan.totalMonths;
-          // Calculate remaining months based on past payrolls could be complex. 
-          // For now, if the loan is edited/re-enabled, we reset it or let the user decide.
-          // By default, if it's newly enabled, remainingMonths = totalMonths.
           if (!user.salaryDeductions.loan.totalPaid) {
             user.salaryDeductions.loan.remainingMonths = salaryDeductions.loan.totalMonths;
             user.salaryDeductions.loan.totalPaid = 0;
@@ -72,13 +69,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
       }
       
-      // Auto-calculate ESI based on new salary
-      if (user.monthlySalary <= 21000) {
-        user.salaryDeductions.esi.enabled = true;
-        user.salaryDeductions.esi.amount = Math.round(user.monthlySalary * 0.0075);
-      } else {
+      // ESI logic: strictly disabled for interns and salaries > 21000
+      if (user.role === 'intern' || user.monthlySalary > 21000) {
         user.salaryDeductions.esi.enabled = false;
         user.salaryDeductions.esi.amount = 0;
+      } else if (salaryDeductions.esi) {
+        const esiEnabled = Boolean(salaryDeductions.esi.enabled);
+        user.salaryDeductions.esi.enabled = esiEnabled;
+        user.salaryDeductions.esi.amount = esiEnabled ? Math.round(user.monthlySalary * 0.0075) : 0;
       }
     }
 

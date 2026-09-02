@@ -8,6 +8,7 @@ import Attendance from '@/models/Attendance';
 import Holiday from '@/models/Holiday';
 import Leave from '@/models/Leave';
 import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay } from 'date-fns';
+import { getSalaryForPayrollPeriod } from '@/lib/salaryUtils';
 
 export async function GET(req: NextRequest) {
   try {
@@ -181,40 +182,74 @@ export async function POST(req: NextRequest) {
         }
 
         if (isWorkingDay) {
-          if (leaveForDay) {
-            if (leaveForDay.duration === 'half_day') {
-               if (leaveForDay.leaveType === 'Leave Without Pay') {
-                 unpaidLeaveDays += 0.5;
-               } else {
-                 paidLeaveDays += 0.5;
-               }
-               if (leaveForDay.leaveType === 'Compensatory Off') {
-                 compOffsTaken += 0.5;
-               }
-               if (att && att.status === 'absent') {
-                  absentDays += 0.5;
-               } else {
-                  presentDays += 0.5;
-               }
+          if (att && (att.firstHalf || att.secondHalf)) {
+            // Process First Half
+            if (att.firstHalf?.status === 'leave' || (leaveForDay && (leaveForDay.duration !== 'half_day' || leaveForDay.halfDaySession === 'first_half'))) {
+              const lType = att.firstHalf?.leaveType || leaveForDay?.leaveType;
+              const unpaidTypes = ['leave without pay', 'lwp', 'unpaid leave', 'unpaid'];
+              if (lType && unpaidTypes.includes(lType.trim().toLowerCase())) {
+                unpaidLeaveDays += 0.5;
+              } else {
+                paidLeaveDays += 0.5;
+              }
+              if (lType === 'Compensatory Off') compOffsTaken += 0.5;
+            } else if (att.firstHalf?.status && ['present', 'late', 'Work From Home', 'On Duty'].includes(att.firstHalf.status)) {
+              presentDays += 0.5;
             } else {
-               if (leaveForDay.leaveType === 'Leave Without Pay') {
-                 unpaidLeaveDays += 1;
-               } else {
-                 paidLeaveDays += 1;
-               }
-               if (leaveForDay.leaveType === 'Compensatory Off') {
-                 compOffsTaken += 1;
-               }
+              absentDays += 0.5;
             }
-          } else {
-            if (att) {
-              if (att.status === 'absent') {
-                absentDays++;
-              } else if (att.status === 'half-day') {
+
+            // Process Second Half
+            if (att.secondHalf?.status === 'leave' || (leaveForDay && (leaveForDay.duration !== 'half_day' || leaveForDay.halfDaySession === 'second_half'))) {
+              const lType = att.secondHalf?.leaveType || leaveForDay?.leaveType;
+              const unpaidTypes = ['leave without pay', 'lwp', 'unpaid leave', 'unpaid'];
+              if (lType && unpaidTypes.includes(lType.trim().toLowerCase())) {
+                unpaidLeaveDays += 0.5;
+              } else {
+                paidLeaveDays += 0.5;
+              }
+              if (lType === 'Compensatory Off') compOffsTaken += 0.5;
+            } else if (att.secondHalf?.status && ['present', 'late', 'Work From Home', 'On Duty'].includes(att.secondHalf.status)) {
+              presentDays += 0.5;
+            } else {
+              absentDays += 0.5;
+            }
+          } else if (leaveForDay) {
+            if (leaveForDay.duration === 'half_day') {
+              const unpaidTypes = ['leave without pay', 'lwp', 'unpaid leave', 'unpaid'];
+              if (unpaidTypes.includes((leaveForDay.leaveType || '').trim().toLowerCase())) {
+                unpaidLeaveDays += 0.5;
+              } else {
+                paidLeaveDays += 0.5;
+              }
+              if (leaveForDay.leaveType === 'Compensatory Off') compOffsTaken += 0.5;
+
+              if (att && ['present', 'late'].includes(att.status)) {
+                presentDays += 0.5;
+              } else {
                 absentDays += 0.5;
               }
             } else {
-              absentDays++;
+              const unpaidTypes = ['leave without pay', 'lwp', 'unpaid leave', 'unpaid'];
+              if (unpaidTypes.includes((leaveForDay.leaveType || '').trim().toLowerCase())) {
+                unpaidLeaveDays += 1;
+              } else {
+                paidLeaveDays += 1;
+              }
+              if (leaveForDay.leaveType === 'Compensatory Off') compOffsTaken += 1;
+            }
+          } else {
+            if (att) {
+              if (['present', 'late', 'Work From Home', 'On Duty'].includes(att.status)) {
+                presentDays += 1;
+              } else if (att.status === 'half-day') {
+                presentDays += 0.5;
+                absentDays += 0.5;
+              } else {
+                absentDays += 1;
+              }
+            } else {
+              absentDays += 1;
             }
           }
         } else {
@@ -229,8 +264,15 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      const monthlySalary = user.monthlySalary || 0;
-      const perDaySalary = monthlySalary / totalCalendarDays; 
+      // Skip employees who joined after this payroll period ended
+      if (user.joiningDate && new Date(user.joiningDate) > endDate) {
+        continue;
+      }
+
+      const salaryInfo = getSalaryForPayrollPeriod(user, month, year);
+      const monthlySalary = salaryInfo?.monthlySalary || user.monthlySalary || 0;
+      const salaryTimelineEffectiveFrom = salaryInfo?.effectiveFrom ? new Date(salaryInfo.effectiveFrom) : undefined;
+      const perDaySalary = totalCalendarDays > 0 ? monthlySalary / totalCalendarDays : 0; 
 
       // Deduction = Unemployed Days + Absent Days + Unpaid Leave Days (Paid leaves do not deduct from salary)
       const deductionDays = unemployedDays + absentDays + unpaidLeaveDays;
@@ -248,16 +290,17 @@ export async function POST(req: NextRequest) {
       let hraDeduction = 0;
       let loanDeduction = 0;
 
-      if (user.role !== 'intern') {
-
-      if (monthlySalary <= 21000) {
-        esiDeduction = Math.round(monthlySalary * 0.0075);
+      // ESI: Applies when salary <= 21000 and ESI toggle is enabled
+      if (monthlySalary <= 21000 && user.salaryDeductions?.esi?.enabled) {
+        esiDeduction = user.salaryDeductions.esi.amount || Math.round(monthlySalary * 0.0075);
       }
 
+      // Rental / HRA Deduction (Applies to all including interns)
       if (user.salaryDeductions?.hra?.enabled) {
         hraDeduction = user.salaryDeductions.hra.amount || 0;
       }
 
+      // Company Loan Deduction (Applies to all including interns)
       if (user.salaryDeductions?.loan?.enabled && user.salaryDeductions.loan.remainingMonths > 0) {
         let isWithinDates = true;
         
@@ -290,7 +333,6 @@ export async function POST(req: NextRequest) {
           await user.save();
         }
       }
-      } // End if (user.role !== 'intern')
 
       deductionAmount += esiDeduction + hraDeduction + loanDeduction;
       const grossSalary = monthlySalary + extraPayAmount;
@@ -318,6 +360,7 @@ export async function POST(req: NextRequest) {
         paidDays,
         deductionDays,
         monthlySalary,
+        salaryTimelineEffectiveFrom,
         grossSalary: monthlySalary,
         deductionAmount,
         netSalary,
@@ -340,14 +383,75 @@ export async function POST(req: NextRequest) {
     console.log(`Successfully generated ${generatedPayrolls.length} payrolls`);
     return NextResponse.json({ message: 'Payroll generated successfully', count: generatedPayrolls.length }, { status: 201 });
   } catch (error: any) {
-  console.error('PAYROLL ERROR:', error);
+    console.error('PAYROLL ERROR:', error);
 
-  return NextResponse.json(
-    {
-      error: error.message,
-      stack: error.stack
-    },
-    { status: 500 }
-  );
+    return NextResponse.json(
+      {
+        error: error.message,
+        stack: error.stack
+      },
+      { status: 500 }
+    );
+  }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session || !['super_admin'].includes(session.user.role)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    const month = searchParams.get('month') ? parseInt(searchParams.get('month')!) : null;
+    const year = searchParams.get('year') ? parseInt(searchParams.get('year')!) : null;
+
+    if (!id && (!month || !year)) {
+      return NextResponse.json({ error: 'Must provide either payroll id or month and year' }, { status: 400 });
+    }
+
+    await dbConnect();
+
+    let query: any = {};
+    if (id) {
+      query._id = id;
+    } else {
+      query.month = month;
+      query.year = year;
+    }
+
+    const payrollsToDelete = await Payroll.find(query);
+    if (payrollsToDelete.length === 0) {
+      return NextResponse.json({ message: 'No payroll records found to delete', count: 0 }, { status: 200 });
+    }
+
+    // Revert loan deductions if loan was deducted in any of these payrolls
+    for (const p of payrollsToDelete) {
+      const loanPaid = p.salaryDeductionsSnapshot?.loan || 0;
+      if (loanPaid > 0 && p.userId) {
+        const user = await User.findById(p.userId);
+        if (user && user.salaryDeductions?.loan) {
+          user.salaryDeductions.loan.remainingMonths += 1;
+          user.salaryDeductions.loan.totalPaid = Math.max(0, (user.salaryDeductions.loan.totalPaid || 0) - loanPaid);
+          user.salaryDeductions.loan.completed = false;
+          if (user.salaryDeductions.loan.totalMonths > 0) {
+            user.salaryDeductions.loan.enabled = true;
+          }
+          user.markModified('salaryDeductions');
+          await user.save();
+        }
+      }
+    }
+
+    const deleteResult = await Payroll.deleteMany(query);
+
+    return NextResponse.json({
+      message: 'Payroll records deleted successfully',
+      count: deleteResult.deletedCount
+    }, { status: 200 });
+  } catch (error: any) {
+    console.error('DELETE PAYROLL ERROR:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }

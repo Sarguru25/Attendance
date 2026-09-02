@@ -23,6 +23,13 @@ export interface IUser extends Document {
   ifscCode?: string;
   joiningDate: Date;
   monthlySalary: number;
+  salaryTimelines?: {
+    _id?: mongoose.Types.ObjectId;
+    effectiveFrom: Date;
+    monthlySalary: number;
+    createdAt?: Date;
+    updatedAt?: Date;
+  }[];
   gender?: 'male' | 'female' | 'other';
   isActive: boolean;
   leaveBalance?: {
@@ -73,6 +80,14 @@ const UserSchema: Schema = new Schema(
     ifscCode: { type: String },
     joiningDate: { type: Date, required: true },
     monthlySalary: { type: Number, default: 0 },
+    salaryTimelines: [
+      {
+        effectiveFrom: { type: Date, required: true },
+        monthlySalary: { type: Number, required: true },
+        createdAt: { type: Date, default: Date.now },
+        updatedAt: { type: Date, default: Date.now }
+      }
+    ],
     gender: { type: String, enum: ['male', 'female', 'other'] },
     isActive: { type: Boolean, default: true },
     leaveBalance: {

@@ -219,10 +219,16 @@ export default function ReportingStructure({ manager, currentUser, subordinates,
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-success"></span>
              </span>
              <p className={clsx("text-sm font-bold", 
-               sessionStatus === 'CAN_CHECK_OUT' ? "text-success" : "text-muted-foreground"
+               sessionStatus === 'CAN_CHECK_OUT' ? "text-success" : 
+               sessionStatus === 'FULL_DAY_LEAVE' ? "text-amber-500" :
+               sessionStatus === 'FIRST_HALF_LEAVE' ? "text-primary" :
+               sessionStatus === 'SECOND_HALF_LEAVE' ? "text-primary" : "text-muted-foreground"
              )}>
                {sessionStatus === 'CAN_CHECK_IN' ? 'Check In Available' : 
                 sessionStatus === 'CAN_CHECK_OUT' ? 'Checked In' : 
+                sessionStatus === 'FULL_DAY_LEAVE' ? 'Full-Day Approved Leave' :
+                sessionStatus === 'FIRST_HALF_LEAVE' ? '1st Half Approved Leave' :
+                sessionStatus === 'SECOND_HALF_LEAVE' ? '2nd Half Approved Leave' :
                 sessionStatus === 'ALL_COMPLETED' ? 'Session Completed' :
                 sessionStatus === 'NO_ACTIVE_SESSION' ? 'No Active Session' : 'Not Available'}
              </p>
@@ -269,8 +275,11 @@ export default function ReportingStructure({ manager, currentUser, subordinates,
               {isActionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Check Out'}
             </button>
           ) : (
-            <div className="w-full bg-muted border border-border text-muted-foreground py-3.5 rounded-xl font-medium text-sm flex items-center justify-center cursor-not-allowed">
-              {sessionStatus === 'ALL_COMPLETED' ? 'Shift Completed' : 'Action Unavailable'}
+            <div className="w-full bg-muted border border-border text-muted-foreground py-3.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center text-center cursor-not-allowed min-h-[44px]">
+              {sessionStatus === 'FULL_DAY_LEAVE' ? 'On Approved Full-Day Leave' :
+               sessionStatus === 'FIRST_HALF_LEAVE' ? `1st Half Leave (Check-in opens at ${activeSessionInfo?.secondHalfStart || '13:00'})` :
+               sessionStatus === 'SECOND_HALF_LEAVE' ? '2nd Half Approved Leave' :
+               sessionStatus === 'ALL_COMPLETED' ? 'Shift Completed' : 'Action Unavailable'}
             </div>
           )}
         </div>

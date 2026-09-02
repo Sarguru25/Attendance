@@ -5,6 +5,7 @@ import User from '@/models/User';
 import Attendance from '@/models/Attendance';
 import Payroll from '@/models/Payroll';
 import { startOfMonth, endOfMonth, getDaysInMonth, isWeekend } from 'date-fns';
+import { getSalaryForPayrollPeriod } from '@/lib/salaryUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     const startDate = startOfMonth(targetDate);
     const endDate = endOfMonth(targetDate);
 
-    // Calculate total working days (excluding Sundays, maybe Saturdays depending on company policy. Prompt says Mon-Sat working, Sunday holiday)
+    // Calculate total working days
     let totalWorkingDays = 0;
     for (let d = 1; d <= getDaysInMonth(targetDate); d++) {
       const current = new Date(year, month - 1, d);
@@ -45,6 +46,14 @@ export async function POST(req: NextRequest) {
     const generatedPayrolls = [];
 
     for (const employee of employees) {
+      if (employee.joiningDate && new Date(employee.joiningDate) > endDate) {
+        continue;
+      }
+
+      const salaryInfo = getSalaryForPayrollPeriod(employee, month, year);
+      const monthlySalary = salaryInfo?.monthlySalary || employee.monthlySalary || 0;
+      const salaryTimelineEffectiveFrom = salaryInfo?.effectiveFrom ? new Date(salaryInfo.effectiveFrom) : undefined;
+
       const attendances = await Attendance.find({
         userId: employee._id,
         date: { $gte: startDate, $lte: endDate },
@@ -61,35 +70,23 @@ export async function POST(req: NextRequest) {
         else if (record.status === 'half-day') halfDays++;
         else if (record.status === 'late') {
           lateDays++;
-          presentDays++; // Late is still present for the day, but might have deductions
+          presentDays++;
         }
       });
 
-      // Calculate absent days based on total working days minus recorded days
-      // If a person didn't check in at all, there might not be an attendance record.
       const recordedDays = presentDays + absentDays + halfDays;
       if (recordedDays < totalWorkingDays) {
         absentDays += (totalWorkingDays - recordedDays);
       }
 
-      // Financial calculations
-      const perDaySalary = employee.monthlySalary / totalWorkingDays;
-
-      // Half-day deduction
+      const perDaySalary = monthlySalary / totalWorkingDays;
       const halfDayDeduction = halfDays * (perDaySalary / 2);
-
-      // Absent deduction
       const absentDeduction = absentDays * perDaySalary;
-
-      // Late deduction (custom rule: every 3 late days = 1 half day, for example. Let's just do absent + half-day)
-
       const totalDeductions = halfDayDeduction + absentDeduction;
-      const finalSalary = employee.monthlySalary - totalDeductions;
+      const finalSalary = monthlySalary - totalDeductions;
 
-      // Delete any previous payroll record for this employee for the same month and year
       await Payroll.deleteMany({ userId: employee._id, month, year });
 
-      // Create new payroll record
       const payroll = await Payroll.create({
         userId: employee._id,
         month,
@@ -98,9 +95,10 @@ export async function POST(req: NextRequest) {
         presentDays,
         absentDays,
         halfDays,
-        monthlySalary: employee.monthlySalary,
+        monthlySalary,
+        salaryTimelineEffectiveFrom,
         deductions: totalDeductions,
-        finalSalary: Math.max(0, finalSalary), // Ensure no negative salary
+        finalSalary: Math.max(0, finalSalary),
         generatedAt: new Date(),
       });
 

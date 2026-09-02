@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Search, Edit, Loader2, Save, X } from 'lucide-react';
+import { Search, Edit, Loader2, Save, X, Clock, Calendar } from 'lucide-react';
 import { api } from '@/services/api';
+import SalaryTimelineManager from './SalaryTimelineManager';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
@@ -15,6 +16,9 @@ export default function SalaryConfigurator() {
   const [formData, setFormData] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Salary Timeline modal state
+  const [selectedUserForTimeline, setSelectedUserForTimeline] = useState<any | null>(null);
+
   const users = data?.users || [];
   
   const filteredUsers = users.filter((u: any) =>
@@ -25,20 +29,31 @@ export default function SalaryConfigurator() {
   const handleEdit = (user: any) => {
     setEditingId(user._id);
     
-    // Default ESI logic
     const salary = Number(user.monthlySalary) || 0;
+    const isIntern = user.role === 'intern';
     const isEsiEligible = salary <= 21000;
-    const calculatedEsi = isEsiEligible ? Math.round(salary * 0.0075) : 0;
+    
+    // ESI initial state: default to FALSE for intern, TRUE for employee (if <= 21k)
+    let esiEnabled = false;
+    if (isEsiEligible) {
+      if (user.salaryDeductions?.esi?.enabled !== undefined) {
+        esiEnabled = Boolean(user.salaryDeductions.esi.enabled);
+      } else {
+        esiEnabled = !isIntern;
+      }
+    }
+    const calculatedEsi = esiEnabled ? Math.round(salary * 0.0075) : 0;
 
     setFormData({
+      userRole: user.role,
       monthlySalary: user.monthlySalary || 0,
       bankName: user.bankName || '',
       accountNumber: user.accountNumber || '',
       ifscCode: user.ifscCode || '',
       salaryDeductions: {
         esi: {
-          enabled: isEsiEligible,
-          amount: isEsiEligible ? calculatedEsi : 0
+          enabled: esiEnabled,
+          amount: calculatedEsi
         },
         hra: {
           enabled: user.salaryDeductions?.hra?.enabled || false,
@@ -52,6 +67,26 @@ export default function SalaryConfigurator() {
           endDate: user.salaryDeductions?.loan?.endDate ? new Date(user.salaryDeductions.loan.endDate).toISOString().split('T')[0] : ''
         }
       }
+    });
+  };
+
+  const handleSalaryChange = (newSalary: number) => {
+    const isEsiEligible = newSalary <= 21000;
+    
+    setFormData((prev: any) => {
+      const willEnableEsi = isEsiEligible ? Boolean(prev.salaryDeductions.esi.enabled) : false;
+      const esiAmt = willEnableEsi ? Math.round(newSalary * 0.0075) : 0;
+      return {
+        ...prev,
+        monthlySalary: newSalary,
+        salaryDeductions: {
+          ...prev.salaryDeductions,
+          esi: {
+            enabled: willEnableEsi,
+            amount: esiAmt
+          }
+        }
+      };
     });
   };
 
@@ -101,7 +136,7 @@ export default function SalaryConfigurator() {
               <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider w-[250px]">Employee</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Salary & Bank Details</th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Deductions</th>
-              <th scope="col" className="relative px-6 py-3 w-[120px]"><span className="sr-only">Actions</span></th>
+              <th scope="col" className="relative px-6 py-3 text-right"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody className="bg-card divide-y divide-border">
@@ -112,6 +147,7 @@ export default function SalaryConfigurator() {
             ) : (
               filteredUsers.map((user: any) => {
                 const isEditing = editingId === user._id;
+                const timelineCount = user.salaryTimelines?.length || 0;
 
                 return (
                   <tr key={user._id.toString()} className="hover:bg-muted/50 transition-colors">
@@ -136,7 +172,7 @@ export default function SalaryConfigurator() {
                               type="number" 
                               className="w-full bg-background border border-border rounded-xl text-foreground px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" 
                               value={formData.monthlySalary} 
-                              onChange={e => setFormData({...formData, monthlySalary: Number(e.target.value)})} 
+                              onChange={e => handleSalaryChange(Number(e.target.value))} 
                             />
                           </div>
                           <div>
@@ -168,8 +204,10 @@ export default function SalaryConfigurator() {
                           </div>
                         </div>
                       ) : (
-                        <div className="space-y-1">
-                          <div className="text-sm font-bold text-card-foreground">₹{(user.monthlySalary || 0).toLocaleString()} <span className="text-[10px] text-muted-foreground font-normal">/ month</span></div>
+                        <div className="space-y-2">
+                          <div className="text-sm font-bold text-card-foreground">
+                            ₹{(user.monthlySalary || 0).toLocaleString()} <span className="text-[10px] text-muted-foreground font-normal">/ month</span>
+                          </div>
                           {user.bankName || user.accountNumber ? (
                             <div className="text-xs text-muted-foreground">
                               <div>{user.bankName || 'No Bank'}</div>
@@ -179,22 +217,60 @@ export default function SalaryConfigurator() {
                           ) : (
                             <div className="text-xs text-muted-foreground italic">No bank details added</div>
                           )}
+                          <button
+                            onClick={() => setSelectedUserForTimeline(user)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-xs font-bold rounded-lg transition-colors"
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            Salary Timeline ({timelineCount})
+                          </button>
                         </div>
                       )}
                     </td>
                     
                     <td className="px-6 py-4">
-                      {user.role === 'intern' ? (
-                        <span className="text-xs text-muted-foreground italic">No deductions for interns</span>
-                      ) : isEditing ? (
+                      {isEditing ? (
                         <div className="space-y-4 max-w-sm">
-                          {/* ESI Info */}
+                          {/* ESI Deduction Toggle */}
                           <div className="bg-muted/30 p-3 rounded-xl border border-border">
-                            <div className="text-xs font-bold text-foreground mb-1">ESI</div>
-                            <div className="text-xs text-muted-foreground">
-                              {formData.monthlySalary <= 21000 
-                                ? `Auto-Enabled: ₹${Math.round(formData.monthlySalary * 0.0075)}` 
-                                : 'Disabled (Salary > 21k)'}
+                            <div className="flex items-center justify-between mb-1">
+                              <div>
+                                <span className="text-xs font-bold text-foreground">ESI</span>
+                                {formData.monthlySalary > 21000 ? (
+                                  <span className="text-[10px] text-muted-foreground block font-medium">Disabled (Salary &gt; ₹21,000)</span>
+                                ) : formData.salaryDeductions.esi.enabled ? (
+                                  <span className="text-[10px] text-muted-foreground block font-medium">
+                                    Enabled: ₹{formData.salaryDeductions.esi.amount}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground block font-medium">
+                                    Disabled {formData.userRole === 'intern' ? '(Default for Interns)' : ''}
+                                  </span>
+                                )}
+                              </div>
+                              <label className="flex items-center cursor-pointer">
+                                <div className="relative">
+                                  <input 
+                                    type="checkbox" 
+                                    disabled={formData.monthlySalary > 21000}
+                                    className="sr-only" 
+                                    checked={formData.salaryDeductions.esi.enabled} 
+                                    onChange={e => {
+                                      const enabled = e.target.checked;
+                                      const esiAmt = enabled ? Math.round(formData.monthlySalary * 0.0075) : 0;
+                                      setFormData({
+                                        ...formData, 
+                                        salaryDeductions: {
+                                          ...formData.salaryDeductions, 
+                                          esi: { enabled, amount: esiAmt }
+                                        }
+                                      });
+                                    }} 
+                                  />
+                                  <div className={`block w-8 h-5 rounded-full transition-colors ${formData.salaryDeductions.esi.enabled ? 'bg-primary' : 'bg-muted border border-border'}`}></div>
+                                  <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition-transform ${formData.salaryDeductions.esi.enabled ? 'transform translate-x-3' : ''}`}></div>
+                                </div>
+                              </label>
                             </div>
                           </div>
                           
@@ -246,40 +322,49 @@ export default function SalaryConfigurator() {
                             <div className="grid grid-cols-2 gap-2">
                               <div>
                                 <label className="text-[10px] text-muted-foreground block mb-0.5">Start Date</label>
-                                <input type="date" disabled={!formData.salaryDeductions.loan.enabled} className="w-full bg-background border border-border rounded-lg text-foreground px-1 py-1 text-[10px] outline-none disabled:opacity-50 [color-scheme:dark]" value={formData.salaryDeductions.loan.startDate} onChange={e => setFormData({...formData, salaryDeductions: {...formData.salaryDeductions, loan: {...formData.salaryDeductions.loan, startDate: e.target.value}}})} />
+                                <input type="date" disabled={!formData.salaryDeductions.loan.enabled} className="w-full bg-background border border-border rounded-lg text-foreground px-1 py-1 text-[10px] outline-none disabled:opacity-50" value={formData.salaryDeductions.loan.startDate} onChange={e => setFormData({...formData, salaryDeductions: {...formData.salaryDeductions, loan: {...formData.salaryDeductions.loan, startDate: e.target.value}}})} />
                               </div>
                               <div>
                                 <label className="text-[10px] text-muted-foreground block mb-0.5">End Date</label>
-                                <input type="date" disabled={!formData.salaryDeductions.loan.enabled} className="w-full bg-background border border-border rounded-lg text-foreground px-1 py-1 text-[10px] outline-none disabled:opacity-50 [color-scheme:dark]" value={formData.salaryDeductions.loan.endDate} onChange={e => setFormData({...formData, salaryDeductions: {...formData.salaryDeductions, loan: {...formData.salaryDeductions.loan, endDate: e.target.value}}})} />
+                                <input type="date" disabled={!formData.salaryDeductions.loan.enabled} className="w-full bg-background border border-border rounded-lg text-foreground px-1 py-1 text-[10px] outline-none disabled:opacity-50" value={formData.salaryDeductions.loan.endDate} onChange={e => setFormData({...formData, salaryDeductions: {...formData.salaryDeductions, loan: {...formData.salaryDeductions.loan, endDate: e.target.value}}})} />
                               </div>
                             </div>
                           </div>
 
                         </div>
                       ) : (
-                        <div className="text-xs space-y-1 font-bold">
-                          {user.salaryDeductions?.esi?.enabled && (
-                            <div className="text-foreground flex justify-between">
-                              <span>ESI</span> <span>₹{user.salaryDeductions.esi.amount}</span>
+                        (() => {
+                          const isEsiActive = Boolean(user.salaryDeductions?.esi?.enabled) && (user.monthlySalary || 0) <= 21000 && (user.salaryDeductions?.esi?.amount || 0) > 0;
+                          const isHraActive = Boolean(user.salaryDeductions?.hra?.enabled) && (user.salaryDeductions?.hra?.amount || 0) > 0;
+                          const isLoanActive = Boolean(user.salaryDeductions?.loan?.enabled) && (user.salaryDeductions?.loan?.remainingMonths || 0) > 0;
+
+                          if (!isEsiActive && !isHraActive && !isLoanActive) {
+                            return <div className="text-muted-foreground italic font-normal text-xs">No active deductions</div>;
+                          }
+
+                          return (
+                            <div className="text-xs space-y-1 font-bold">
+                              {isEsiActive && (
+                                <div className="text-foreground flex justify-between">
+                                  <span>ESI</span> <span>₹{user.salaryDeductions.esi.amount}</span>
+                                </div>
+                              )}
+                              {isHraActive && (
+                                <div className="text-destructive flex justify-between">
+                                  <span>Rental Deduction</span> <span>₹{user.salaryDeductions.hra.amount}</span>
+                                </div>
+                              )}
+                              {isLoanActive && (
+                                <div className="text-warning flex flex-col mt-1">
+                                  <div className="flex justify-between">
+                                    <span>Loan (₹{Math.round(user.salaryDeductions.loan.monthlyDeduction || 0)}/m)</span>
+                                    <span>{user.salaryDeductions.loan.remainingMonths}/{user.salaryDeductions.loan.totalMonths} mos left</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {user.salaryDeductions?.hra?.enabled && (
-                            <div className="text-destructive flex justify-between">
-                              <span>Rental Deduction</span> <span>₹{user.salaryDeductions.hra.amount}</span>
-                            </div>
-                          )}
-                          {user.salaryDeductions?.loan?.enabled && (
-                            <div className="text-warning flex flex-col mt-1">
-                              <div className="flex justify-between">
-                                <span>Loan (₹{Math.round(user.salaryDeductions.loan.monthlyDeduction || 0)}/m)</span>
-                                <span>{user.salaryDeductions.loan.remainingMonths}/{user.salaryDeductions.loan.totalMonths} mos left</span>
-                              </div>
-                            </div>
-                          )}
-                          {!user.salaryDeductions?.esi?.enabled && !user.salaryDeductions?.hra?.enabled && !user.salaryDeductions?.loan?.enabled && (
-                            <div className="text-muted-foreground italic font-normal">No active deductions</div>
-                          )}
-                        </div>
+                          );
+                        })()
                       )}
                     </td>
                     
@@ -306,6 +391,20 @@ export default function SalaryConfigurator() {
           </tbody>
         </table>
       </div>
+
+      {/* Salary Timeline Manager Modal */}
+      {selectedUserForTimeline && (
+        <SalaryTimelineManager
+          user={selectedUserForTimeline}
+          onClose={() => setSelectedUserForTimeline(null)}
+          onUpdate={() => {
+            mutate();
+            // Update selected user object if open
+            const updatedUser = users.find((u: any) => u._id === selectedUserForTimeline._id);
+            if (updatedUser) setSelectedUserForTimeline(updatedUser);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { format, subMonths } from 'date-fns';
-import { Search, Download, PlayCircle, FileText, Loader2, User as UserIcon, Mail, X } from 'lucide-react';
+import { Search, Download, PlayCircle, FileText, Loader2, User as UserIcon, Mail, X, Trash2 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { useCompany } from '@/components/CompanyProvider';
 import { api } from '@/services/api';
+import { formatDateDisplay } from '@/lib/salaryUtils';
 import SalaryConfigurator from './SalaryConfigurator';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
@@ -20,12 +21,58 @@ export default function PayrollClient() {
 
   const { data, error, isLoading, mutate } = useSWR(`/api/admin/payroll?month=${month}&year=${year}`, fetcher);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [downloadingPayslip, setDownloadingPayslip] = useState<string | null>(null);
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
   const [isSendingBulk, setIsSendingBulk] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+
+  const handleDeleteMonth = async () => {
+    if (!payrolls.length) return;
+    const monthName = format(currentDate, 'MMMM yyyy');
+    if (!confirm(`Are you sure you want to delete ALL payroll records for ${monthName}? This action cannot be undone.`)) return;
+
+    setIsDeleting(true);
+    try {
+      const res = await api(`/api/admin/payroll?month=${month}&year=${year}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to delete payroll');
+      }
+      const result = await res.json();
+      alert(`Successfully deleted ${result.count} payroll record(s) for ${monthName}.`);
+      mutate();
+    } catch (error: any) {
+      alert(`Error deleting payroll: ${error.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteSingle = async (payrollId: string, employeeName: string) => {
+    if (!confirm(`Are you sure you want to delete the payroll record for ${employeeName}?`)) return;
+
+    setDeletingId(payrollId);
+    try {
+      const res = await api(`/api/admin/payroll?id=${payrollId}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to delete payroll record');
+      }
+      mutate();
+    } catch (error: any) {
+      alert(`Error deleting record: ${error.message}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handlePrint = () => {
     window.print();
@@ -198,8 +245,17 @@ export default function PayrollClient() {
         {activeTab === 'payroll' && (
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             <button
+              onClick={handleDeleteMonth}
+              disabled={isDeleting || isGenerating || isSendingBulk || !payrolls.length}
+              className="w-full sm:w-auto flex justify-center items-center px-4 py-2 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl min-h-[44px] hover:bg-destructive/20 transition-colors shadow-sm font-bold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title="Delete all payroll records for this month"
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete Month
+            </button>
+            <button
               onClick={handleSendBulkEmail}
-              disabled={isSendingBulk || isGenerating || !payrolls.length}
+              disabled={isSendingBulk || isGenerating || isDeleting || !payrolls.length}
               className="w-full sm:w-auto flex justify-center items-center px-4 py-2 bg-success text-success-foreground rounded-xl min-h-[44px] hover:bg-success/90 transition-colors shadow-sm font-bold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               {isSendingBulk ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mail className="h-4 w-4 mr-2" />}
@@ -207,7 +263,7 @@ export default function PayrollClient() {
             </button>
             <button
               onClick={handleExport}
-              disabled={isSendingBulk || isGenerating || !payrolls.length}
+              disabled={isSendingBulk || isGenerating || isDeleting || !payrolls.length}
               className="w-full sm:w-auto flex justify-center items-center px-4 py-2 bg-secondary border border-border text-secondary-foreground rounded-xl min-h-[44px] hover:bg-secondary/80 transition-colors shadow-sm font-bold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <Download className="h-4 w-4 mr-2" />
@@ -215,7 +271,7 @@ export default function PayrollClient() {
             </button>
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || isSendingBulk}
+              disabled={isGenerating || isSendingBulk || isDeleting}
               className="w-full sm:w-auto flex justify-center items-center px-4 py-2 bg-primary text-primary-foreground rounded-xl min-h-[44px] hover:bg-primary/90 transition-colors shadow-sm font-bold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-2" />}
@@ -246,12 +302,18 @@ export default function PayrollClient() {
               <div className="flex w-full sm:w-auto">
                 <select
                   className="w-full sm:w-auto block pl-3 pr-10 py-2 min-h-[44px] text-base border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary sm:text-sm rounded-xl transition-colors font-bold"
-                  onChange={(e) => setCurrentDate(new Date(e.target.value))}
-                  value={currentDate.toISOString()}
+                  onChange={(e) => {
+                    const [y, m] = e.target.value.split('-').map(Number);
+                    setCurrentDate(new Date(y, m - 1, 1));
+                  }}
+                  value={`${year}-${month}`}
                 >
-                  {months.map((m, i) => (
-                    <option key={i} value={m.toISOString()}>{format(m, 'MMMM yyyy')}</option>
-                  ))}
+                  {months.map((m, i) => {
+                    const optionVal = `${m.getFullYear()}-${m.getMonth() + 1}`;
+                    return (
+                      <option key={i} value={optionVal}>{format(m, 'MMMM yyyy')}</option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
@@ -316,7 +378,12 @@ export default function PayrollClient() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-card-foreground">
-                            ₹{(payroll.grossSalary || payroll.monthlySalary).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <div>₹{(payroll.grossSalary || payroll.monthlySalary).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            {payroll.salaryTimelineEffectiveFrom && (
+                              <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                                Timeline: {formatDateDisplay(payroll.salaryTimelineEffectiveFrom)}
+                              </div>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-destructive font-bold">
                             -₹{(payroll.deductionAmount ?? payroll.deductions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -328,7 +395,7 @@ export default function PayrollClient() {
                             <div className="flex items-center justify-end space-x-2">
                               <button
                                 onClick={() => handleSendEmail(payroll._id)}
-                                disabled={sendingEmail === payroll._id || isSendingBulk}
+                                disabled={sendingEmail === payroll._id || isSendingBulk || deletingId === payroll._id}
                                 className="text-success hover:text-success/80 transition-colors bg-success/10 px-4 py-2 min-h-[44px] rounded-xl border border-success/20 flex items-center disabled:opacity-50"
                               >
                                 {sendingEmail === payroll._id ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Mail className="h-4 w-4 mr-1.5" />}
@@ -340,6 +407,14 @@ export default function PayrollClient() {
                               >
                                 <FileText className="h-4 w-4 mr-1.5" />
                                 Payslip
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSingle(payroll._id, user?.name || 'employee')}
+                                disabled={deletingId === payroll._id || isSendingBulk || isDeleting}
+                                className="text-destructive hover:text-destructive/80 transition-colors bg-destructive/10 px-3 py-2 min-h-[44px] rounded-xl border border-destructive/20 flex items-center disabled:opacity-50"
+                                title="Delete this payroll record"
+                              >
+                                {deletingId === payroll._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                               </button>
                             </div>
                           </td>
@@ -518,6 +593,12 @@ export default function PayrollClient() {
                       </tbody>
                     </table>
                   </div>
+
+                  {selectedPayslip.salaryTimelineEffectiveFrom && (
+                    <div className="text-[11px] text-gray-500 italic mt-3 text-center print:text-black">
+                      * Salary determined from timeline effective {formatDateDisplay(selectedPayslip.salaryTimelineEffectiveFrom)}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

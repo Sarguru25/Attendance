@@ -20,13 +20,13 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
     }
 
-    if (user.role === 'admin' || user.role === 'super_admin' || user.role === 'intern') {
+    if (user.role === 'admin' || user.role === 'super_admin') {
       return NextResponse.json({ error: 'This role cannot receive salary deductions' }, { status: 400 });
     }
 
     const salary = user.monthlySalary || 0;
-    const isEsiEligible = salary <= 21000;
-    const esiEnabled = isEsiEligible;
+    const isEsiEligible = user.role !== 'intern' && salary <= 21000;
+    const esiEnabled = isEsiEligible && (esi?.enabled !== undefined ? Boolean(esi.enabled) : true);
     const esiAmount = esiEnabled ? Math.round(salary * 0.0075) : 0;
 
     const updateData: any = {

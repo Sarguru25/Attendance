@@ -33,11 +33,27 @@ export default function EmployeeAttendanceClient() {
   const lateCount = attendances.filter((a: any) => a.status === 'late').length;
   const halfDayCount = attendances.filter((a: any) => a.status === 'half-day').length;
 
-    const getStatusBadge = (status: string) => {
+    const getStatusBadge = (att: any) => {
+    const status = typeof att === 'string' ? att : att?.status;
+    const fh = typeof att === 'object' ? att?.firstHalf : null;
+    const sh = typeof att === 'object' ? att?.secondHalf : null;
+
+    let subBadge = null;
+    if (fh?.status === 'leave') {
+      subBadge = <div className="text-[10px] font-bold text-amber-500 mt-1">1st Half: {fh.leaveType || 'Leave'}</div>;
+    } else if (sh?.status === 'leave') {
+      subBadge = <div className="text-[10px] font-bold text-amber-500 mt-1">2nd Half: {sh.leaveType || 'Leave'}</div>;
+    }
+
     switch (status) {
       case 'present': return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success border border-success/20 rounded-md flex items-center w-fit"><CheckCircle2 className="w-3 h-3 mr-1.5" /> Present</span>;
       case 'late': return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-warning/10 text-warning border border-warning/20 rounded-md flex items-center w-fit"><AlertCircle className="w-3 h-3 mr-1.5" /> Late</span>;
-      case 'half-day': return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><Clock className="w-3 h-3 mr-1.5" /> Half Day</span>;
+      case 'half-day': return (
+        <div>
+          <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><Clock className="w-3 h-3 mr-1.5" /> Half Day</span>
+          {subBadge}
+        </div>
+      );
       default: return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive border border-destructive/20 rounded-md flex items-center w-fit"><XCircle className="w-3 h-3 mr-1.5" /> Absent</span>;
     }
   };
@@ -242,7 +258,7 @@ export default function EmployeeAttendanceClient() {
                       {used > 0 ? `${Math.floor(used / 60)}h ${used % 60}m` : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(att.status)}
+                      {getStatusBadge(att)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       {att.correctionStatus === 'pending' ? (

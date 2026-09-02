@@ -18,6 +18,7 @@ export interface IPayroll extends Document {
   paidDays: number;
   deductionDays: number;
   monthlySalary: number;
+  salaryTimelineEffectiveFrom?: Date;
   grossSalary: number;
   deductionAmount: number;
   netSalary: number;
@@ -52,6 +53,7 @@ const PayrollSchema: Schema = new Schema(
     paidDays: { type: Number, default: 0 },
     deductionDays: { type: Number, default: 0 },
     monthlySalary: { type: Number, required: true },
+    salaryTimelineEffectiveFrom: { type: Date },
     grossSalary: { type: Number, default: 0 },
     deductionAmount: { type: Number, default: 0 },
     netSalary: { type: Number, default: 0 },

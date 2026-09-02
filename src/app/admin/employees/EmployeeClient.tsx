@@ -738,7 +738,7 @@ export default function EmployeeClient({ initialEmployees, shifts }: { initialEm
                     <input
                       type="date"
                       required
-                      className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary [color-scheme:dark]"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                       value={formData.joiningDate}
                       onChange={(e) => setFormData({...formData, joiningDate: e.target.value})}
                     />

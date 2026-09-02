@@ -4,7 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Attendance from '@/models/Attendance';
 import Leave from '@/models/Leave';
-import '@/models/Shift'; 
+import '@/models/Shift';
 import Holiday from '@/models/Holiday';
 import { getActiveSessionInfo } from '@/lib/sessionUtils';
 import { isSameDay } from 'date-fns';
@@ -34,23 +34,23 @@ export async function GET() {
     const subordinates = await User.find({ reportsTo: session.user.id })
       .select('employeeId name role designation department profileImage')
       .lean();
-    
+
     // Attendances
     const attendances = await Attendance.find({ userId: session.user.id }).sort({ date: -1 }).limit(30);
     const todayAttendance = attendances.find(a => new Date(a.date).getTime() === today.getTime());
-    
+
     // Calculate Monthly %
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthAttendances = attendances.filter(a => new Date(a.date) >= firstDayOfMonth);
     const presentDays = monthAttendances.filter(a => a.status === 'present' || a.status === 'late').length;
-    
+
     // Ideally calculate total working days till today
     const holidaysThisMonth = await Holiday.find({
       date: { $gte: firstDayOfMonth, $lte: today },
       holidayType: { $in: ['public', 'company'] }
     });
-    
-    const shiftWorkingDays = user?.shiftId?.workingDays?.map((d: string) => d.toLowerCase()) || 
+
+    const shiftWorkingDays = user?.shiftId?.workingDays?.map((d: string) => d.toLowerCase()) ||
       ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -58,7 +58,7 @@ export async function GET() {
     let workingDays = 0;
     for (let d = new Date(firstDayOfMonth); d <= today; d.setDate(d.getDate() + 1)) {
       const dayName = daysOfWeek[d.getDay()];
-      
+
       if (shiftWorkingDays.includes(dayName)) {
         // Check if day is a holiday
         const isHoliday = holidaysThisMonth.some(h => isSameDay(new Date(h.date), d));
@@ -84,10 +84,10 @@ export async function GET() {
     // Use the actual leaveBalance from user if available, otherwise fallback
     let availableLeave = 0;
     if (user.leaveBalance) {
-      availableLeave = 
-        (user.leaveBalance.casualLeave?.available || 0) + 
-        (user.leaveBalance.sickLeave?.available || 0) + 
-        (user.leaveBalance.restrictedLeave?.available || 0) + 
+      availableLeave =
+        (user.leaveBalance.casualLeave?.available || 0) +
+        (user.leaveBalance.sickLeave?.available || 0) +
+        (user.leaveBalance.restrictedLeave?.available || 0) +
         (user.leaveBalance.compensatoryOff?.available || 0);
     } else {
       availableLeave = 24 - takenLeaves;
@@ -102,8 +102,8 @@ export async function GET() {
     }));
 
     // Upcoming Leaves
-    const upcomingLeaves = await Leave.find({ 
-      userId: session.user.id, 
+    const upcomingLeaves = await Leave.find({
+      userId: session.user.id,
       fromDate: { $gte: today },
       status: { $in: ['pending', 'approved'] }
     }).sort({ fromDate: 1 }).limit(3);
@@ -113,10 +113,10 @@ export async function GET() {
       activeDeductions.push({ type: 'ESI', amount: user.salaryDeductions.esi.amount });
     }
     if (user.salaryDeductions?.loan?.enabled && user.salaryDeductions.loan.remainingMonths > 0) {
-      activeDeductions.push({ 
-        type: 'Loan', 
+      activeDeductions.push({
+        type: 'Loan',
         amount: user.salaryDeductions.loan.monthlyDeduction,
-        remainingMonths: user.salaryDeductions.loan.remainingMonths 
+        remainingMonths: user.salaryDeductions.loan.remainingMonths
       });
     }
 
@@ -124,11 +124,23 @@ export async function GET() {
     const shift = user?.shiftId;
     let sessionStatus = 'NO_SHIFT';
     let activeSessionInfo = null;
-    
+
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const todayLeave = await Leave.findOne({
+      userId: session.user.id,
+      status: 'approved',
+      fromDate: { $lte: todayEnd },
+      toDate: { $gte: todayStart }
+    });
+
     if (shift && shift.sessions) {
-      activeSessionInfo = getActiveSessionInfo(shift.sessions, todayAttendance?.sessions || [], currentIstTime);
+      activeSessionInfo = getActiveSessionInfo(shift.sessions, todayAttendance?.sessions || [], currentIstTime, todayLeave, shift);
       sessionStatus = activeSessionInfo.currentStatus;
-      
+
       if (todayAttendance) {
         (todayAttendance as any).activeSessionInfo = activeSessionInfo;
       }

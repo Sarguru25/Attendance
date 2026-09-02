@@ -406,7 +406,7 @@ export default function AttendanceClient() {
                     <label className="block text-sm font-bold text-card-foreground mb-1">Check In Time</label>
                     <input
                       type="time"
-                      className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground font-bold min-h-[44px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none [color-scheme:dark]"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground font-bold min-h-[44px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none"
                       value={editFormData.loginTime}
                       onChange={(e) => setEditFormData({...editFormData, loginTime: e.target.value})}
                     />
@@ -415,7 +415,7 @@ export default function AttendanceClient() {
                     <label className="block text-sm font-bold text-card-foreground mb-1">Check Out Time</label>
                     <input
                       type="time"
-                      className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground font-bold min-h-[44px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none [color-scheme:dark]"
+                      className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground font-bold min-h-[44px] focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none"
                       value={editFormData.logoutTime}
                       onChange={(e) => setEditFormData({...editFormData, logoutTime: e.target.value})}
                     />
