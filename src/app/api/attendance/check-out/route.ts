@@ -49,6 +49,14 @@ export async function POST(req: NextRequest) {
       toDate: { $gte: todayStart }
     });
 
+    const boundaries = calculateHalfSession(shift);
+    const [shHours, shMins] = boundaries.secondHalf.start.split(':').map(Number);
+    const currentIstTime = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const [curH, curM] = currentIstTime.split(':').map(Number);
+
+    const curTotalMins = curH * 60 + curM;
+    const shStartMins = shHours * 60 + shMins;
+
     let targetHalf: 'firstHalf' | 'secondHalf' = 'firstHalf';
 
     if (attendance.secondHalf?.checkIn && !attendance.secondHalf?.checkOut) {
@@ -71,6 +79,17 @@ export async function POST(req: NextRequest) {
       checkOut: now,
       workedHours: parseFloat(workedHours.toFixed(2))
     };
+
+    // If employee checked in during first half and checks out at or after second half start time (full day work),
+    // and has no approved second-half leave, auto-complete secondHalf as present as well!
+    if (targetHalf === 'firstHalf' && curTotalMins >= shStartMins && !approvedLeave && attendance.secondHalf?.status !== 'leave') {
+      attendance.secondHalf = {
+        status: 'present',
+        checkIn: checkInTime,
+        checkOut: now,
+        workedHours: parseFloat(workedHours.toFixed(2))
+      };
+    }
 
     if (attendance.sessions && attendance.sessions.length > 0) {
       const activeSessionInArr = attendance.sessions.find(s => !s.checkOut);

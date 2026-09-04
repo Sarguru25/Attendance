@@ -162,12 +162,26 @@ export function calculateDailyAttendance({
           secondHalf.status = sorted[1].lateMinutes > 0 ? 'late' : 'present';
           secondHalf.lateMinutes = sorted[1].lateMinutes || 0;
         }
-      } else if (sorted.length === 1 && firstHalfLeave && !shLeave) {
-        secondHalf.checkIn = sorted[0].checkIn || secondHalf.checkIn;
-        secondHalf.checkOut = sorted[0].checkOut || secondHalf.checkOut;
-        if (secondHalf.checkIn && secondHalf.status !== 'leave') {
-          secondHalf.status = sorted[0].lateMinutes > 0 ? 'late' : 'present';
-          secondHalf.lateMinutes = sorted[0].lateMinutes || 0;
+      } else if (sorted.length === 1 && !shLeave) {
+        if (firstHalfLeave) {
+          secondHalf.checkIn = sorted[0].checkIn || secondHalf.checkIn;
+          secondHalf.checkOut = sorted[0].checkOut || secondHalf.checkOut;
+          if (secondHalf.checkIn && secondHalf.status !== 'leave') {
+            secondHalf.status = sorted[0].lateMinutes > 0 ? 'late' : 'present';
+            secondHalf.lateMinutes = sorted[0].lateMinutes || 0;
+          }
+        } else if (sorted[0].checkOut) {
+          const checkOutDate = new Date(sorted[0].checkOut);
+          const coIstStr = checkOutDate.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+          const [coH, coM] = coIstStr.split(':').map(Number);
+          const [shH, shM] = boundaries.secondHalf.start.split(':').map(Number);
+          if ((coH * 60 + coM) >= (shH * 60 + shM)) {
+            secondHalf.checkIn = sorted[0].checkIn || secondHalf.checkIn;
+            secondHalf.checkOut = sorted[0].checkOut || secondHalf.checkOut;
+            if (secondHalf.status !== 'leave') {
+              secondHalf.status = 'present';
+            }
+          }
         }
       }
     } else {
@@ -177,6 +191,20 @@ export function calculateDailyAttendance({
         if (firstHalf.status !== 'leave') {
           firstHalf.status = existingAttendance.lateMinutes > 0 ? 'late' : 'present';
           firstHalf.lateMinutes = existingAttendance.lateMinutes || 0;
+        }
+
+        if (existingAttendance.logoutTime && !shLeave) {
+          const checkOutDate = new Date(existingAttendance.logoutTime);
+          const coIstStr = checkOutDate.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+          const [coH, coM] = coIstStr.split(':').map(Number);
+          const [shH, shM] = boundaries.secondHalf.start.split(':').map(Number);
+          if ((coH * 60 + coM) >= (shH * 60 + shM)) {
+            secondHalf.checkIn = existingAttendance.loginTime;
+            secondHalf.checkOut = existingAttendance.logoutTime;
+            if (secondHalf.status !== 'leave') {
+              secondHalf.status = 'present';
+            }
+          }
         }
       }
     }
@@ -243,135 +271,93 @@ export function calculateDailyAttendance({
   } else if (firstHalf.status === 'leave' || secondHalf.status === 'leave') {
     finalStatus = 'half-day';
   } else if (firstHalf.status === 'present' || firstHalf.status === 'late' || secondHalf.status === 'present' || secondHalf.status === 'late') {
-    finalStatus = 'half-day';
+    if (existingAttendance?.status === 'present' || existingAttendance?.status === 'late') {
+      finalStatus = existingAttendance.status;
+    } else {
+      finalStatus = 'half-day';
+    }
   }
 
   return {
     firstHalf,
     secondHalf,
-    finalStatus,
-    totalWorkedHours,
-    totalLeaveDays,
+    totalWorkedHours: parseFloat(totalWorkedHours.toFixed(2)),
     paidLeaveDays,
     unpaidLeaveDays,
-    lateMinutes: (firstHalf.lateMinutes || 0) + (secondHalf.lateMinutes || 0)
+    totalLeaveDays,
+    status: finalStatus
   };
 }
 
 /**
- * Synchronizes approved or revoked leave with Attendance records for affected dates.
+ * Automatically syncs an approved leave record into the Attendance collection.
  */
-export async function syncLeaveToAttendance(leave: any, isApproved: boolean) {
-  if (!leave) return;
+export async function syncLeaveToAttendance(leave: any, overrideApproved: boolean = false) {
+  if (!leave || (leave.status !== 'approved' && !overrideApproved)) return;
+
   const Attendance = (await import('@/models/Attendance')).default;
+  const Shift = (await import('@/models/Shift')).default;
   const User = (await import('@/models/User')).default;
-  const user = await User.findById(leave.userId).populate('shiftId');
 
-  const fromStr = new Date(leave.fromDate).toISOString().split('T')[0];
-  const toStr = new Date(leave.toDate).toISOString().split('T')[0];
+  const user = await User.findById(leave.userId).populate('shiftId').lean();
+  if (!user) return;
 
-  const [fromY, fromM, fromD] = fromStr.split('-').map(Number);
-  const [toY, toM, toD] = toStr.split('-').map(Number);
+  const shift = user.shiftId as any;
+  const startDate = new Date(leave.fromDate);
+  const endDate = new Date(leave.toDate);
 
-  let cur = new Date(Date.UTC(fromY, fromM - 1, fromD, 0, 0, 0, 0));
-  const end = new Date(Date.UTC(toY, toM - 1, toD, 23, 59, 59, 999));
+  startDate.setHours(0, 0, 0, 0);
+  endDate.setHours(0, 0, 0, 0);
 
-  while (cur <= end) {
-    const startOfDay = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate(), 0, 0, 0, 0));
-    const endOfDay = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate(), 23, 59, 59, 999));
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const attendanceDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0));
 
-    let attendance = await Attendance.findOne({
-      userId: leave.userId,
-      date: { $gte: startOfDay, $lte: endOfDay }
-    });
+    let attendance = await Attendance.findOne({ userId: leave.userId, date: attendanceDate });
+    if (!attendance) {
+      attendance = new Attendance({
+        userId: leave.userId,
+        date: attendanceDate,
+        shiftId: shift?._id,
+        status: leave.duration === 'half_day' ? 'half-day' : leave.leaveType,
+        companyId: leave.companyId
+      });
+    }
 
-    if (isApproved) {
-      if (!attendance) {
-        attendance = new Attendance({
-          userId: leave.userId,
-          companyId: user?.companyId,
-          date: startOfDay,
-          shiftId: user?.shiftId?._id || user?.shiftId,
-          status: leave.duration === 'half_day' ? 'half-day' : 'Leave',
-          sessions: []
-        });
-      }
-
-      if (leave.duration === 'half_day') {
-        const leaveSession: any = {
+    if (leave.duration === 'full_day' || !leave.halfDaySession) {
+      attendance.status = leave.leaveType;
+      attendance.firstHalf = {
+        status: 'leave',
+        leaveId: leave._id,
+        leaveType: leave.leaveType
+      };
+      attendance.secondHalf = {
+        status: 'leave',
+        leaveId: leave._id,
+        leaveType: leave.leaveType
+      };
+    } else if (leave.duration === 'half_day') {
+      attendance.status = 'half-day';
+      if (leave.halfDaySession === 'first_half') {
+        attendance.firstHalf = {
           status: 'leave',
           leaveId: leave._id,
           leaveType: leave.leaveType
         };
-
-        if (leave.halfDaySession === 'first_half') {
-          attendance.firstHalf = leaveSession;
-          if (!attendance.secondHalf?.status || attendance.secondHalf.status === 'leave') {
-            attendance.secondHalf = { status: null, workedHours: 0, lateMinutes: 0 };
-          }
-        } else {
-          attendance.secondHalf = leaveSession;
-          if (!attendance.firstHalf?.status || attendance.firstHalf.status === 'leave') {
-            attendance.firstHalf = { status: null, workedHours: 0, lateMinutes: 0 };
-          }
+        if (!attendance.secondHalf?.status || attendance.secondHalf.status === 'leave') {
+          attendance.secondHalf = { status: null };
         }
-
-        const isPaid = isLeaveTypePaid(leave.leaveType);
-        if (isPaid) {
-          attendance.paidLeaveDays = (attendance.paidLeaveDays || 0) + 0.5;
-        } else {
-          attendance.unpaidLeaveDays = (attendance.unpaidLeaveDays || 0) + 0.5;
-        }
-
-        if (attendance.firstHalf?.status === 'leave' && attendance.secondHalf?.status === 'leave') {
-          attendance.status = 'Leave';
-        } else {
-          attendance.status = 'half-day';
-        }
-      } else {
-        const leaveSession: any = {
+      } else if (leave.halfDaySession === 'second_half') {
+        attendance.secondHalf = {
           status: 'leave',
           leaveId: leave._id,
           leaveType: leave.leaveType
         };
-        attendance.firstHalf = leaveSession;
-        attendance.secondHalf = leaveSession;
-        attendance.status = 'Leave';
-
-        const isPaid = isLeaveTypePaid(leave.leaveType);
-        if (isPaid) {
-          attendance.paidLeaveDays = 1;
-          attendance.unpaidLeaveDays = 0;
-        } else {
-          attendance.unpaidLeaveDays = 1;
-          attendance.paidLeaveDays = 0;
+        if (!attendance.firstHalf?.status || attendance.firstHalf.status === 'leave') {
+          attendance.firstHalf = { status: null };
         }
-      }
-
-      await attendance.save();
-    } else {
-      if (attendance) {
-        if (leave.duration === 'half_day') {
-          if (leave.halfDaySession === 'first_half' && attendance.firstHalf?.status === 'leave') {
-            attendance.firstHalf = { status: null, leaveId: null, leaveType: null, workedHours: 0, lateMinutes: 0 };
-          }
-          if (leave.halfDaySession === 'second_half' && attendance.secondHalf?.status === 'leave') {
-            attendance.secondHalf = { status: null, leaveId: null, leaveType: null, workedHours: 0, lateMinutes: 0 };
-          }
-          if (attendance.firstHalf?.status === 'present' || attendance.secondHalf?.status === 'present') {
-            attendance.status = 'half-day';
-          } else {
-            attendance.status = 'absent';
-          }
-        } else {
-          if (attendance.firstHalf?.status === 'leave') attendance.firstHalf = { status: null, leaveId: null, leaveType: null, workedHours: 0, lateMinutes: 0 };
-          if (attendance.secondHalf?.status === 'leave') attendance.secondHalf = { status: null, leaveId: null, leaveType: null, workedHours: 0, lateMinutes: 0 };
-          attendance.status = 'absent';
-        }
-        await attendance.save();
       }
     }
 
-    cur.setUTCDate(cur.getUTCDate() + 1);
+    await attendance.save();
   }
 }
