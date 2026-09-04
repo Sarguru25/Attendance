@@ -278,6 +278,8 @@ export function calculateDailyAttendance({
     }
   }
 
+  const totalLateMinutes = (firstHalf.lateMinutes || 0) + (secondHalf.lateMinutes || 0);
+
   return {
     firstHalf,
     secondHalf,
@@ -285,7 +287,9 @@ export function calculateDailyAttendance({
     paidLeaveDays,
     unpaidLeaveDays,
     totalLeaveDays,
-    status: finalStatus
+    status: finalStatus,
+    finalStatus,
+    lateMinutes: totalLateMinutes
   };
 }
 

@@ -50,12 +50,12 @@ export async function POST(req: NextRequest) {
     });
 
     const boundaries = calculateHalfSession(shift);
-    const [shHours, shMins] = boundaries.secondHalf.start.split(':').map(Number);
+    const [shStartH, shStartM] = boundaries.secondHalf.start.split(':').map(Number);
     const currentIstTime = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
     const [curH, curM] = currentIstTime.split(':').map(Number);
 
     const curTotalMins = curH * 60 + curM;
-    const shStartMins = shHours * 60 + shMins;
+    const shStartMins = shStartH * 60 + shStartM;
 
     let targetHalf: 'firstHalf' | 'secondHalf' = 'firstHalf';
 
