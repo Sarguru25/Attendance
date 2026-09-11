@@ -50,13 +50,24 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { effectiveFrom, monthlySalary } = await req.json();
+    const body = await req.json();
+    const { effectiveFrom, monthlySalary, basicSalary, hra, da, bonus, esiDeduction, rentalDeduction, loanDeduction } = body;
 
     // Rule 4: Salary > 0 validation
     const salaryNum = Number(monthlySalary);
     if (isNaN(salaryNum) || salaryNum <= 0) {
       return NextResponse.json({ error: 'Salary must be greater than zero' }, { status: 400 });
     }
+
+    const bsNum = basicSalary !== undefined && basicSalary !== null ? Number(basicSalary) : Math.round(salaryNum * 0.5);
+    const hraNum = hra !== undefined && hra !== null ? Number(hra) : Math.round(salaryNum * 0.15);
+    const daNum = da !== undefined && da !== null ? Number(da) : (salaryNum - bsNum - hraNum);
+    const bonusNum = Number(bonus || 0);
+    const esiNum = Number(esiDeduction || 0);
+    const rentalNum = Number(rentalDeduction || 0);
+    const loanNum = Number(loanDeduction || 0);
+
+    const calcTotalSalary = (bsNum + hraNum + daNum + bonusNum) > 0 ? (bsNum + hraNum + daNum + bonusNum) : salaryNum;
 
     // Rule 2: Invalid date validation
     if (!effectiveFrom || isNaN(new Date(effectiveFrom).getTime())) {
@@ -85,6 +96,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
         user.salaryTimelines.push({
           effectiveFrom: new Date(baselineDate),
           monthlySalary: user.monthlySalary,
+          basicSalary: Math.round(user.monthlySalary * 0.5),
+          hra: Math.round(user.monthlySalary * 0.15),
+          da: user.monthlySalary - Math.round(user.monthlySalary * 0.5) - Math.round(user.monthlySalary * 0.15),
           createdAt: new Date(),
           updatedAt: new Date()
         } as any);
@@ -106,7 +120,14 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     // Add new timeline
     const newTimeline = {
       effectiveFrom: new Date(`${effYMD}T00:00:00`),
-      monthlySalary: salaryNum,
+      monthlySalary: calcTotalSalary,
+      basicSalary: bsNum,
+      hra: hraNum,
+      da: daNum,
+      bonus: bonusNum,
+      esiDeduction: esiNum,
+      rentalDeduction: rentalNum,
+      loanDeduction: loanNum,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -160,7 +181,8 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { timelineId, effectiveFrom, monthlySalary } = await req.json();
+    const body = await req.json();
+    const { timelineId, effectiveFrom, monthlySalary, basicSalary, hra, da, bonus, esiDeduction, rentalDeduction, loanDeduction } = body;
 
     if (!timelineId) {
       return NextResponse.json({ error: 'Timeline ID is required' }, { status: 400 });
@@ -171,6 +193,16 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
     if (isNaN(salaryNum) || salaryNum <= 0) {
       return NextResponse.json({ error: 'Salary must be greater than zero' }, { status: 400 });
     }
+
+    const bsNum = basicSalary !== undefined && basicSalary !== null ? Number(basicSalary) : Math.round(salaryNum * 0.5);
+    const hraNum = hra !== undefined && hra !== null ? Number(hra) : Math.round(salaryNum * 0.15);
+    const daNum = da !== undefined && da !== null ? Number(da) : (salaryNum - bsNum - hraNum);
+    const bonusNum = Number(bonus || 0);
+    const esiNum = Number(esiDeduction || 0);
+    const rentalNum = Number(rentalDeduction || 0);
+    const loanNum = Number(loanDeduction || 0);
+
+    const calcTotalSalary = (bsNum + hraNum + daNum + bonusNum) > 0 ? (bsNum + hraNum + daNum + bonusNum) : salaryNum;
 
     // Rule 2: Invalid date
     if (!effectiveFrom || isNaN(new Date(effectiveFrom).getTime())) {
@@ -214,7 +246,14 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
 
     const prevSalary = user.salaryTimelines[timelineIndex].monthlySalary;
     user.salaryTimelines[timelineIndex].effectiveFrom = new Date(`${effYMD}T00:00:00`);
-    user.salaryTimelines[timelineIndex].monthlySalary = salaryNum;
+    user.salaryTimelines[timelineIndex].monthlySalary = calcTotalSalary;
+    user.salaryTimelines[timelineIndex].basicSalary = bsNum;
+    user.salaryTimelines[timelineIndex].hra = hraNum;
+    user.salaryTimelines[timelineIndex].da = daNum;
+    user.salaryTimelines[timelineIndex].bonus = bonusNum;
+    user.salaryTimelines[timelineIndex].esiDeduction = esiNum;
+    user.salaryTimelines[timelineIndex].rentalDeduction = rentalNum;
+    user.salaryTimelines[timelineIndex].loanDeduction = loanNum;
     user.salaryTimelines[timelineIndex].updatedAt = new Date();
 
     // Rule 3: Sort automatically by effectiveFrom ASC

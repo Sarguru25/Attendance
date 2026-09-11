@@ -12,9 +12,21 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function EmployeeLeavesClient() {
   const { data, error, isLoading, mutate } = useSWR('/api/employee/leaves', fetcher);
+  const { data: restrictedHolidaysData } = useSWR('/api/holidays?type=restricted', fetcher);
+  const rawRestrictedHolidays = restrictedHolidaysData?.holidays || [];
+  const restrictedHolidays: any[] = Array.from(
+    new Map<string, any>(
+      rawRestrictedHolidays.map((h: any) => [
+        `${h.holidayName?.trim().toLowerCase()}_${format(new Date(h.date), 'yyyy-MM-dd')}`,
+        h
+      ])
+    ).values()
+  );
+
   const searchParams = useSearchParams();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedRestrictedHolidayId, setSelectedRestrictedHolidayId] = useState('');
 
   useEffect(() => {
     if (searchParams.get('apply') === 'true') {
@@ -51,6 +63,7 @@ export default function EmployeeLeavesClient() {
       mutate();
       setIsModalOpen(false);
       setFormData({ leaveType: '', fromDate: '', toDate: '', duration: 'full_day', halfDaySession: '', reason: '', attachments: [] });
+      setSelectedRestrictedHolidayId('');
       toast.success('Leave applied successfully');
     } catch (err: any) {
       toast.error(err.message || 'Error applying for leave');
@@ -222,7 +235,25 @@ export default function EmployeeLeavesClient() {
                     required
                     className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors min-h-[44px]"
                     value={formData.leaveType}
-                    onChange={(e) => setFormData({...formData, leaveType: e.target.value})}
+                    onChange={(e) => {
+                      const newType = e.target.value;
+                      if (newType === 'Restricted Holiday') {
+                        setFormData({
+                          ...formData,
+                          leaveType: newType,
+                          fromDate: '',
+                          toDate: '',
+                          duration: 'full_day',
+                          halfDaySession: ''
+                        });
+                        setSelectedRestrictedHolidayId('');
+                      } else {
+                        setFormData({
+                          ...formData,
+                          leaveType: newType
+                        });
+                      }
+                    }}
                   >
                     <option value="" disabled>-- Select Leave Type --</option>
                     <option value="Sick Leave">Sick Leave</option>
@@ -235,76 +266,129 @@ export default function EmployeeLeavesClient() {
                   </select>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-card-foreground mb-1.5">From Date</label>
-                    <input
-                      type="date"
-                      required
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors min-h-[44px]"
-                      value={formData.fromDate}
-                      onChange={(e) => {
-                        const newFromDate = e.target.value;
-                        setFormData(prev => ({
-                          ...prev, 
-                          fromDate: newFromDate,
-                          toDate: prev.duration === 'half_day' || prev.duration === 'full_day' ? newFromDate : prev.toDate
-                        }));
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-card-foreground mb-1.5">To Date</label>
-                    <input
-                      type="date"
-                      required
-                      disabled={formData.duration === 'half_day' || formData.duration === 'full_day'}
-                      min={formData.fromDate || undefined}
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors disabled:opacity-50 min-h-[44px]"
-                      value={formData.duration === 'half_day' || formData.duration === 'full_day' ? formData.fromDate : formData.toDate}
-                      onChange={(e) => setFormData({...formData, toDate: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-card-foreground mb-1.5">Duration</label>
-                    <select
-                      required
-                      className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors min-h-[44px]"
-                      value={formData.duration}
-                      onChange={(e) => {
-                        const dur = e.target.value;
-                        setFormData(prev => ({
-                          ...prev, 
-                          duration: dur, 
-                          halfDaySession: dur === 'half_day' ? 'first_half' : '',
-                          toDate: dur === 'half_day' || dur === 'full_day' ? prev.fromDate : prev.toDate
-                        }));
-                      }}
-                    >
-                      <option value="full_day">Full Day</option>
-                      <option value="half_day">Half Day</option>
-                      <option value="multiple_days">Multiple Days</option>
-                    </select>
-                  </div>
-
-                  {formData.duration === 'half_day' && (
+                {formData.leaveType === 'Restricted Holiday' ? (
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-card-foreground mb-1.5">Session</label>
+                      <label className="block text-sm font-medium text-card-foreground mb-1.5">Restricted Holiday *</label>
                       <select
                         required
                         className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors min-h-[44px]"
-                        value={formData.halfDaySession}
-                        onChange={(e) => setFormData({...formData, halfDaySession: e.target.value})}
+                        value={selectedRestrictedHolidayId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setSelectedRestrictedHolidayId(id);
+                          const selected = restrictedHolidays.find((h: any) => h._id === id);
+                          if (selected) {
+                            const dateStr = format(new Date(selected.date), 'yyyy-MM-dd');
+                            setFormData(prev => ({
+                              ...prev,
+                              fromDate: dateStr,
+                              toDate: dateStr,
+                              duration: 'full_day'
+                            }));
+                          }
+                        }}
                       >
-                        <option value="first_half">First Half (Morning)</option>
-                        <option value="second_half">Second Half (Afternoon)</option>
+                        <option value="" disabled>-- Select Restricted Holiday --</option>
+                        {restrictedHolidays.length === 0 ? (
+                          <option value="" disabled>No restricted holidays available in calendar</option>
+                        ) : (
+                          restrictedHolidays.map((holiday: any) => (
+                            <option key={holiday._id} value={holiday._id}>
+                              {holiday.holidayName} ({format(new Date(holiday.date), 'dd-MMM-yyyy')})
+                            </option>
+                          ))
+                        )}
                       </select>
                     </div>
-                  )}
-                </div>
+
+                    {formData.fromDate && (
+                      <div>
+                        <label className="block text-sm font-medium text-card-foreground mb-1.5">Holiday Date</label>
+                        <input
+                          type="text"
+                          disabled
+                          readOnly
+                          value={format(new Date(formData.fromDate), 'dd-MMM-yyyy (EEEE)')}
+                          className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl text-muted-foreground font-medium min-h-[44px] cursor-not-allowed"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-card-foreground mb-1.5">From Date</label>
+                        <input
+                          type="date"
+                          required
+                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors min-h-[44px]"
+                          value={formData.fromDate}
+                          onChange={(e) => {
+                            const newFromDate = e.target.value;
+                            setFormData(prev => ({
+                              ...prev, 
+                              fromDate: newFromDate,
+                              toDate: prev.duration === 'half_day' || prev.duration === 'full_day' ? newFromDate : prev.toDate
+                            }));
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-card-foreground mb-1.5">To Date</label>
+                        <input
+                          type="date"
+                          required
+                          disabled={formData.duration === 'half_day' || formData.duration === 'full_day'}
+                          min={formData.fromDate || undefined}
+                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors disabled:opacity-50 min-h-[44px]"
+                          value={formData.duration === 'half_day' || formData.duration === 'full_day' ? formData.fromDate : formData.toDate}
+                          onChange={(e) => setFormData({...formData, toDate: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-card-foreground mb-1.5">Duration</label>
+                        <select
+                          required
+                          className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors min-h-[44px]"
+                          value={formData.duration}
+                          onChange={(e) => {
+                            const dur = e.target.value;
+                            setFormData(prev => ({
+                              ...prev, 
+                              duration: dur, 
+                              halfDaySession: dur === 'half_day' ? 'first_half' : '',
+                              toDate: dur === 'half_day' || dur === 'full_day' ? prev.fromDate : prev.toDate
+                            }));
+                          }}
+                        >
+                          <option value="full_day">Full Day</option>
+                          <option value="half_day">Half Day</option>
+                          <option value="multiple_days">Multiple Days</option>
+                        </select>
+                      </div>
+
+                      {formData.duration === 'half_day' && (
+                        <div>
+                          <label className="block text-sm font-medium text-card-foreground mb-1.5">Session</label>
+                          <select
+                            required
+                            className="w-full px-4 py-2.5 bg-background border border-border rounded-xl text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors min-h-[44px]"
+                            value={formData.halfDaySession}
+                            onChange={(e) => setFormData({...formData, halfDaySession: e.target.value})}
+                          >
+                            <option value="first_half">First Half (Morning)</option>
+                            <option value="second_half">Second Half (Afternoon)</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-card-foreground mb-1.5">Reason</label>

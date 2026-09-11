@@ -19,7 +19,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     await dbConnect();
 
-    const existingUser = await User.findOne({ 
+    const existingUser = await User.findOne({
       $or: [{ email }, { employeeId }],
       _id: { $ne: id }
     });

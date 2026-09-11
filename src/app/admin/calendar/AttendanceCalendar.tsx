@@ -81,6 +81,18 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     return eachDayOfInterval({ start, end });
   }, [currentDate]);
 
+  const isDayWeeklyOff = (day: Date) => {
+    const shift = data?.user?.shiftId;
+    const dayName = format(day, 'EEEE');
+
+    if (shift && Array.isArray(shift.workingDays) && shift.workingDays.length > 0) {
+      return !shift.workingDays.some((wd: string) => wd.toLowerCase() === dayName.toLowerCase());
+    }
+
+    // Default fallback if shift or workingDays not defined: Sunday is weekly off
+    return day.getDay() === 0;
+  };
+
   const getDayDetails = (day: Date) => {
     if (!data || data.error) return null;
 
@@ -94,8 +106,8 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
       };
     }
 
-    // 2. Check Weekend / Weekly Off
-    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+    // 2. Check Weekly Off from Shift
+    const isShiftWeeklyOff = isDayWeeklyOff(day);
 
     // 3. Attendance and Leave records
     const attendance = data.attendances?.find((a: any) => isSameDay(new Date(a.date), day));
@@ -111,20 +123,21 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
 
     const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
     const isBeforeJoining = data.user?.joiningDate && day < new Date(new Date(data.user.joiningDate).setHours(0, 0, 0, 0));
-
-    if (isWeekend && !attendance && !leave) {
-      return {
-        isWeeklyOff: true,
-        label: 'Weekly Off',
-        color: 'bg-muted/30 text-muted-foreground border-transparent'
-      };
-    }
+    const isAttendanceWeeklyOff = attendance?.status === 'Weekly Off';
 
     if (isBeforeJoining && !attendance && !leave) {
       return {
         isBeforeJoining: true,
         label: '-',
         color: 'bg-muted/20 text-muted-foreground border-transparent'
+      };
+    }
+
+    if ((isShiftWeeklyOff && !attendance && !leave) || (isAttendanceWeeklyOff && !leave)) {
+      return {
+        isWeeklyOff: true,
+        label: 'Weekly Off',
+        color: 'bg-muted/30 text-muted-foreground border-transparent'
       };
     }
 
@@ -364,11 +377,28 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
           });
           const att = exportData.attendances?.find((a: any) => a.userId === user._id && isSameDay(new Date(a.date), day));
 
+          const userShift = user.shiftId as any;
+          const userWorkingDays = Array.isArray(userShift?.workingDays) && userShift.workingDays.length > 0
+            ? userShift.workingDays
+            : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          const dayName = format(day, 'EEEE');
+          const isUserWeeklyOff = !userWorkingDays.some((wd: string) => wd.toLowerCase() === dayName.toLowerCase());
+
           if (att) {
             if (att.status === 'present') status = 'Present';
             else if (att.status === 'half-day') status = 'Half Day';
             else if (att.status === 'late') status = 'Late';
             else if (att.status === 'absent') status = 'Absent';
+            else if (att.status === 'Weekly Off') status = 'WO';
+            else if (att.status === 'Work From Home') status = 'WFH';
+            else if (att.status === 'On Duty') status = 'OD';
+            else if (att.status === 'Holiday') status = 'Holiday';
+            else if (att.status) {
+              const type = att.firstHalf?.leaveType || att.secondHalf?.leaveType || att.status || (leave ? leave.leaveType : 'Leave');
+              if (type.toLowerCase().includes('sick')) status = 'SL';
+              else if (type.toLowerCase().includes('casual')) status = 'CL';
+              else status = type.split(' ').map((w: string) => w[0]).join('').toUpperCase();
+            }
           } else if (leave) {
             const type = leave.leaveType || 'Leave';
             if (type.toLowerCase().includes('sick')) status = 'SL';
@@ -377,7 +407,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
           } else if (isHoliday) {
             status = 'Holiday';
           } else {
-            if (day.getDay() === 0 || day.getDay() === 6) {
+            if (isUserWeeklyOff) {
               status = 'WO';
             } else if (currentDay > now) {
               status = '';
@@ -474,9 +504,19 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
               )}
               <div className="grid grid-cols-7 auto-rows-fr bg-border gap-[1px]">
                 {daysInMonth.map((day) => {
-                  const details = getDayDetails(day);
                   const isCurrentMonth = isSameMonth(day, currentDate);
+                  if (!isCurrentMonth) {
+                    return (
+                      <div
+                        key={day.toString()}
+                        className="min-h-[110px] sm:min-h-[130px] bg-card/20 pointer-events-none select-none"
+                      />
+                    );
+                  }
+
+                  const details = getDayDetails(day);
                   const today = isToday(day);
+                  const isWeeklyOff = isDayWeeklyOff(day);
 
                   return (
                     <div
@@ -484,7 +524,6 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
                       onClick={() => handleDayClick(day, details)}
                       className={clsx(
                         "min-h-[110px] sm:min-h-[130px] bg-card p-1.5 sm:p-2 transition-colors relative group flex flex-col justify-between",
-                        !isCurrentMonth && "bg-card/50 opacity-50",
                         today && "ring-1 ring-inset ring-primary/50 bg-primary/5",
                         isAdmin && selectedUser && "cursor-pointer hover:bg-accent"
                       )}
@@ -492,8 +531,8 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
                       <div className="flex items-center justify-between mb-1">
                         <span className={clsx(
                           "text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full",
-                          today ? "bg-primary text-primary-foreground" : isCurrentMonth ? "text-card-foreground" : "text-muted-foreground/50",
-                          (day.getDay() === 0 || day.getDay() === 6) && isCurrentMonth && !today && "text-destructive"
+                          today ? "bg-primary text-primary-foreground" : "text-card-foreground",
+                          isWeeklyOff && !today && "text-destructive"
                         )}>
                           {format(day, 'd')}
                         </span>

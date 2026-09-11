@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
     let totalHours = 0;
     let dbSessions: any[] = [];
 
+    let sessionIntervals: { start: number, end: number }[] = [];
+
     if (sessions && Array.isArray(sessions)) {
       sessions.forEach(s => {
         let checkInTime = null;
@@ -58,7 +60,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (checkInTime && checkOutTime) {
-          totalHours += (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+          sessionIntervals.push({ start: checkInTime.getTime(), end: checkOutTime.getTime() });
         }
 
         if (checkInTime || checkOutTime) {
@@ -71,6 +73,25 @@ export async function POST(req: NextRequest) {
           });
         }
       });
+    }
+
+    sessionIntervals.sort((a, b) => a.start - b.start);
+    let mergedIntervals: { start: number, end: number }[] = [];
+    for (const interval of sessionIntervals) {
+      if (mergedIntervals.length === 0) {
+        mergedIntervals.push(interval);
+      } else {
+        let last = mergedIntervals[mergedIntervals.length - 1];
+        if (interval.start <= last.end) {
+          last.end = Math.max(last.end, interval.end);
+        } else {
+          mergedIntervals.push(interval);
+        }
+      }
+    }
+
+    for (const interval of mergedIntervals) {
+      totalHours += (interval.end - interval.start) / (1000 * 60 * 60);
     }
 
     const attendanceTypes = ['present', 'absent', 'half-day', 'late'];

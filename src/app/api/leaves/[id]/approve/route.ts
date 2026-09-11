@@ -20,13 +20,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     await dbConnect();
-    const leave = await Leave.findById(id).populate('userId');
+    const leave = await Leave.findById(id, null, { bypassTenant: true }).populate({ path: 'userId', options: { bypassTenant: true } });
     if (!leave) {
       return NextResponse.json({ error: 'Leave request not found' }, { status: 404 });
     }
 
     // Check if user is the current approver or an admin
-    const currentUser = await User.findById(session.user.id);
+    const currentUser = await User.findById(session.user.id, null, { bypassTenant: true });
     const isAdmin = currentUser?.role === 'admin';
     const isCurrentApprover = leave.currentApprover?.toString() === session.user.id;
 
@@ -37,7 +37,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const previousStatus = leave.status;
     leave.status = status;
     leave.approvedBy = session.user.id as any;
-    await leave.save();
+    await leave.save({ bypassTenant: true } as any);
 
     const { syncLeaveToAttendance } = await import('@/lib/halfDayUtils');
     await syncLeaveToAttendance(leave, status === 'approved');

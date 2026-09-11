@@ -49,7 +49,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const attendances = await Attendance.find({
       userId: employeeId,
       date: { $gte: startOfMonth, $lte: endOfMonth }
-    }).sort({ date: -1 }).lean();
+    }, null, { bypassTenant: true }).sort({ date: -1 }).lean();
 
     let present = 0, absent = 0, late = 0, halfDay = 0, leaveCount = 0;
     
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     // Fetch Permissions for the month
-    const recentPermissions = await Permission.find({ userId: employeeId })
+    const recentPermissions = await Permission.find({ userId: employeeId }, null, { bypassTenant: true })
       .sort({ date: -1 })
       .limit(10)
       .lean();
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     };
 
     // Fetch Leaves for the month and all-time leaves history (limited)
-    const recentLeaves = await Leave.find({ userId: employeeId })
+    const recentLeaves = await Leave.find({ userId: employeeId }, null, { bypassTenant: true })
       .sort({ createdAt: -1 })
       .limit(10)
       .lean();

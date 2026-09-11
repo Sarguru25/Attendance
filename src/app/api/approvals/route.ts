@@ -27,12 +27,12 @@ export async function GET(req: NextRequest) {
       wfhs,
       permissions
     ] = await Promise.all([
-      Leave.find({ currentApprover: userId, status: 'pending' }).populate('userId', 'name employeeId').lean(),
-      MissPunch.find({ approverId: userId, status: 'pending' }).populate('employeeId', 'name employeeId').lean(),
-      AttendanceCorrection.find({ approverId: userId, status: 'pending' }).populate('employeeId', 'name employeeId').lean(),
-      OvertimeRequest.find({ approverId: userId, status: 'pending' }).populate('employeeId', 'name employeeId').lean(),
-      WFHRequest.find({ approverId: userId, status: 'pending' }).populate('employeeId', 'name employeeId').lean(),
-      Permission.find({ currentApprover: userId, status: 'Pending Approval' }).populate('userId', 'name employeeId').lean(),
+      Leave.find({ currentApprover: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'userId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      MissPunch.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      AttendanceCorrection.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      OvertimeRequest.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      WFHRequest.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      Permission.find({ currentApprover: userId, status: 'Pending Approval' }, null, { bypassTenant: true }).populate({ path: 'userId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
     ]);
 
     // Normalize data structure for UI

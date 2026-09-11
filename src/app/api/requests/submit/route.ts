@@ -19,11 +19,11 @@ export async function POST(req: NextRequest) {
     const { requestType, ...data } = await req.json();
 
     await dbConnect();
-    const user = await User.findById(session.user.id);
+    const user = await User.findById(session.user.id, null, { bypassTenant: true });
     let approverId = user?.reportsTo;
 
     if (!approverId) {
-      const admin = await User.findOne({ role: 'admin' });
+      const admin = await User.findOne({ role: 'admin' }, null, { bypassTenant: true });
       if (admin) approverId = admin._id;
     }
 

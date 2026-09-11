@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     }
 
     await dbConnect();
-    const leaves = await Leave.find({ userId: session.user.id })
+    const leaves = await Leave.find({ userId: session.user.id }, null, { bypassTenant: true })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -60,11 +60,11 @@ export async function POST(req: NextRequest) {
     }
 
     const User = (await import('@/models/User')).default;
-    const user = await User.findById(session.user.id);
+    const user = await User.findById(session.user.id, null, { bypassTenant: true });
     let currentApprover = user?.reportsTo;
 
     if (!currentApprover) {
-      const admin = await User.findOne({ role: 'admin' });
+      const admin = await User.findOne({ role: 'admin' }, null, { bypassTenant: true });
       if (admin) currentApprover = admin._id;
     }
 

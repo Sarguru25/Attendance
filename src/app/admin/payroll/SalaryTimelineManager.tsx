@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Edit2, Trash2, Calendar, DollarSign, X, Check, Loader2, AlertCircle, Clock } from 'lucide-react';
+import { Plus, Edit2, Copy, Trash2, Calendar, DollarSign, X, Check, Loader2, AlertCircle, Clock } from 'lucide-react';
 import { api } from '@/services/api';
 import { computeTimelineDisplayList, ISalaryTimeline, ITimelineDisplayItem } from '@/lib/salaryUtils';
 
@@ -19,6 +19,12 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
   // Form state
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [monthlySalary, setMonthlySalary] = useState('');
+  const [basicSalary, setBasicSalary] = useState('');
+  const [hra, setHra] = useState('');
+  const [da, setDa] = useState('');
+  const [bonus, setBonus] = useState('0');
+  const [esiDeduction, setEsiDeduction] = useState('0');
+  const [rentalDeduction, setRentalDeduction] = useState('0');
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,9 +36,43 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
   const resetForm = () => {
     setEffectiveFrom('');
     setMonthlySalary('');
+    setBasicSalary('');
+    setHra('');
+    setDa('');
+    setBonus('0');
+    setEsiDeduction('0');
+    setRentalDeduction('0');
     setIsAdding(false);
     setEditingTimelineId(null);
     setError(null);
+  };
+
+  const handleGrossSalaryChange = (valStr: string) => {
+    setMonthlySalary(valStr);
+    const val = Number(valStr);
+    if (!isNaN(val) && val > 0) {
+      const bs = Math.round(val * 0.5);
+      const h = Math.round(val * 0.15);
+      const d = val - bs - h;
+      setBasicSalary(String(bs));
+      setHra(String(h));
+      setDa(String(d));
+    }
+  };
+
+  const handleComponentChange = (field: 'bs' | 'hra' | 'da' | 'bonus', valStr: string) => {
+    let bs = field === 'bs' ? Number(valStr) || 0 : Number(basicSalary) || 0;
+    let h = field === 'hra' ? Number(valStr) || 0 : Number(hra) || 0;
+    let d = field === 'da' ? Number(valStr) || 0 : Number(da) || 0;
+    let b = field === 'bonus' ? Number(valStr) || 0 : Number(bonus) || 0;
+
+    if (field === 'bs') setBasicSalary(valStr);
+    if (field === 'hra') setHra(valStr);
+    if (field === 'da') setDa(valStr);
+    if (field === 'bonus') setBonus(valStr);
+
+    const total = bs + h + d + b;
+    setMonthlySalary(String(total));
   };
 
   const handleStartAdd = () => {
@@ -43,9 +83,33 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
   const handleStartEdit = (item: ITimelineDisplayItem) => {
     setError(null);
     setEditingTimelineId(item._id || null);
+    setIsAdding(false);
+
     setEffectiveFrom(item.effectiveFrom);
     setMonthlySalary(String(item.monthlySalary));
-    setIsAdding(false);
+    setBasicSalary(String(item.basicSalary));
+    setHra(String(item.hra));
+    setDa(String(item.da));
+    setBonus(String(item.bonus || 0));
+    setEsiDeduction(String(item.esiDeduction || 0));
+    setRentalDeduction(String(item.rentalDeduction || 0));
+  };
+
+  const handleStartClone = (item: ITimelineDisplayItem) => {
+    setError(null);
+    setEditingTimelineId(null);
+    setIsAdding(true);
+
+    // Pre-fill fields from copied timeline, clear date for admin to select
+    setEffectiveFrom('');
+    setMonthlySalary(String(item.monthlySalary));
+    setBasicSalary(String(item.basicSalary));
+    setHra(String(item.hra));
+    setDa(String(item.da));
+    setBonus(String(item.bonus || 0));
+    setEsiDeduction(String(item.esiDeduction || 0));
+    setRentalDeduction(String(item.rentalDeduction || 0));
+    setSuccess('Cloned timeline components into new entry form. Select an Effective Date to save.');
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -67,6 +131,17 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
     setIsLoading(true);
 
     try {
+      const payload = {
+        effectiveFrom,
+        monthlySalary: salaryNum,
+        basicSalary: Number(basicSalary) || Math.round(salaryNum * 0.5),
+        hra: Number(hra) || Math.round(salaryNum * 0.15),
+        da: Number(da) || (salaryNum - (Number(basicSalary) || 0) - (Number(hra) || 0)),
+        bonus: Number(bonus) || 0,
+        esiDeduction: Number(esiDeduction) || 0,
+        rentalDeduction: Number(rentalDeduction) || 0
+      };
+
       if (editingTimelineId) {
         // Edit existing timeline
         const res = await api(`/api/admin/employees/${user._id}/salary-timelines`, {
@@ -74,8 +149,7 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             timelineId: editingTimelineId,
-            effectiveFrom,
-            monthlySalary: salaryNum
+            ...payload
           })
         });
 
@@ -89,10 +163,7 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
         const res = await api(`/api/admin/employees/${user._id}/salary-timelines`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            effectiveFrom,
-            monthlySalary: salaryNum
-          })
+          body: JSON.stringify(payload)
         });
 
         const data = await res.json();
@@ -190,7 +261,7 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
             )}
           </div>
 
-          {/* Form (Add or Edit) */}
+          {/* Form (Add / Edit / Clone) */}
           {(isAdding || editingTimelineId) && (
             <form onSubmit={handleSave} className="bg-muted/40 p-5 border border-border rounded-xl space-y-4">
               <div className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -198,15 +269,16 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
                 {editingTimelineId ? 'Edit Salary Timeline' : 'Add New Salary Timeline'}
               </div>
 
+              {/* Date & Gross Salary */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground mb-1">
-                    Effective From <span className="text-destructive">*</span>
+                    Effective From Date <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="date"
                     required
-                    className="w-full bg-background border border-border rounded-xl text-foreground px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none"
+                    className="w-full bg-background border border-border rounded-xl text-foreground px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none font-medium"
                     value={effectiveFrom}
                     onChange={(e) => setEffectiveFrom(e.target.value)}
                   />
@@ -214,7 +286,7 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
 
                 <div>
                   <label className="block text-xs font-bold text-muted-foreground mb-1">
-                    Monthly Salary (₹) <span className="text-destructive">*</span>
+                    Total Gross Salary (₹) <span className="text-destructive">*</span>
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-xs text-muted-foreground font-bold">₹</span>
@@ -223,10 +295,82 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
                       min="1"
                       step="1"
                       required
-                      placeholder="e.g. 17000"
-                      className="w-full bg-background border border-border rounded-xl text-foreground pl-7 pr-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none"
+                      placeholder="e.g. 8000"
+                      className="w-full bg-background border border-border rounded-xl text-foreground pl-7 pr-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none font-bold"
                       value={monthlySalary}
-                      onChange={(e) => setMonthlySalary(e.target.value)}
+                      onChange={(e) => handleGrossSalaryChange(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Earnings Split 50:15:35 */}
+              <div className="pt-2 border-t border-border/50">
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  Salary Earnings Breakdown
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-1">Basic Salary</label>
+                    <input
+                      type="number"
+                      className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
+                      value={basicSalary}
+                      onChange={(e) => handleComponentChange('bs', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-1">HRA </label>
+                    <input
+                      type="number"
+                      className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
+                      value={hra}
+                      onChange={(e) => handleComponentChange('hra', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-1">DA</label>
+                    <input
+                      type="number"
+                      className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
+                      value={da}
+                      onChange={(e) => handleComponentChange('da', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-1">Bonus</label>
+                    <input
+                      type="number"
+                      className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
+                      value={bonus}
+                      onChange={(e) => handleComponentChange('bonus', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Deductions Breakdown */}
+              <div className="pt-2 border-t border-border/50">
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                  Standard Deductions Config
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-1">ESI Deduction (₹)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
+                      value={esiDeduction}
+                      onChange={(e) => setEsiDeduction(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-1">Rental Deduction (₹)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
+                      value={rentalDeduction}
+                      onChange={(e) => setRentalDeduction(e.target.value)}
                     />
                   </div>
                 </div>
@@ -258,19 +402,22 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
             <table className="min-w-full divide-y divide-border">
               <thead className="bg-muted/40">
                 <tr>
-                  <th scope="col" className="px-5 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Effective From
                   </th>
-                  <th scope="col" className="px-5 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Effective To
                   </th>
-                  <th scope="col" className="px-5 py-3 text-right text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                    Monthly Salary
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Earnings (BS : HRA : DA)
                   </th>
-                  <th scope="col" className="px-5 py-3 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-right text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Total Gross
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Status
                   </th>
-                  <th scope="col" className="px-5 py-3 text-right text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  <th scope="col" className="px-4 py-3 text-right text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -278,7 +425,7 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
               <tbody className="divide-y divide-border bg-card">
                 {displayItems.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground font-semibold">
+                    <td colSpan={6} className="px-6 py-8 text-center text-sm text-muted-foreground font-semibold">
                       No salary timelines configured. Click &quot;Add Salary Timeline&quot; to define salary history.
                     </td>
                   </tr>
@@ -293,16 +440,22 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
                           isBeingEdited ? 'bg-primary/5' : ''
                         }`}
                       >
-                        <td className="px-5 py-4 text-sm font-bold text-foreground whitespace-nowrap">
+                        <td className="px-4 py-4 text-sm font-bold text-foreground whitespace-nowrap">
                           {item.effectiveFromFormatted}
                         </td>
-                        <td className="px-5 py-4 text-sm text-muted-foreground whitespace-nowrap font-medium">
+                        <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap font-medium">
                           {item.effectiveToFormatted}
                         </td>
-                        <td className="px-5 py-4 text-sm font-bold text-foreground text-right whitespace-nowrap">
+                        <td className="px-4 py-4 text-xs text-muted-foreground whitespace-nowrap">
+                          <div className="font-semibold text-foreground">
+                            BS: ₹{item.basicSalary.toLocaleString()} | HRA: ₹{item.hra.toLocaleString()} | DA: ₹{item.da.toLocaleString()}
+                          </div>
+                          {item.bonus ? <div className="text-[10px] text-emerald-500 font-bold">Bonus: ₹{item.bonus.toLocaleString()}</div> : null}
+                        </td>
+                        <td className="px-4 py-4 text-sm font-bold text-foreground text-right whitespace-nowrap">
                           ₹{item.monthlySalary.toLocaleString('en-IN')}
                         </td>
-                        <td className="px-5 py-4 text-center whitespace-nowrap">
+                        <td className="px-4 py-4 text-center whitespace-nowrap">
                           {item.status === 'Current' && (
                             <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-xs font-bold rounded-full">
                               Current
@@ -319,23 +472,31 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="px-4 py-4 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => handleStartEdit(item)}
                               disabled={isLoading}
-                              className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50"
+                              className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1 text-xs font-bold"
                               title="Edit timeline"
                             >
-                              <Edit2 className="w-4 h-4" />
+                              <Edit2 className="w-3.5 h-3.5" /> 
+                            </button>
+                            <button
+                              onClick={() => handleStartClone(item)}
+                              disabled={isLoading}
+                              className="p-1.5 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1 text-xs font-bold"
+                              title="Clone this timeline into new form"
+                            >
+                              <Copy className="w-3.5 h-3.5" /> 
                             </button>
                             <button
                               onClick={() => handleDelete(item)}
                               disabled={isLoading}
-                              className="p-1.5 text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-50"
+                              className="p-1.5 text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1 text-xs font-bold"
                               title="Delete timeline"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" /> 
                             </button>
                           </div>
                         </td>

@@ -12,7 +12,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
     const body = await req.json();
-    const { monthlySalary, bankName, accountNumber, ifscCode, salaryDeductions } = body;
+    const { monthlySalary, basicSalary, hra, da, bonus, effectiveFrom, bankName, accountNumber, ifscCode, salaryDeductions } = body;
 
     await dbConnect();
     const user = await User.findById(id);
@@ -25,11 +25,56 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
        return NextResponse.json({ error: 'Cannot modify salary for admins' }, { status: 400 });
     }
 
-    if (monthlySalary !== undefined) user.monthlySalary = monthlySalary;
     if (bankName !== undefined) user.bankName = bankName;
     if (accountNumber !== undefined) user.accountNumber = accountNumber;
     if (ifscCode !== undefined) user.ifscCode = ifscCode;
-    
+
+    if (monthlySalary !== undefined) {
+      const salaryNum = Number(monthlySalary);
+      user.monthlySalary = salaryNum;
+
+      // Sync with Current Salary Timeline
+      const bsNum = basicSalary !== undefined && basicSalary !== null ? Number(basicSalary) : Math.round(salaryNum * 0.5);
+      const hraNum = hra !== undefined && hra !== null ? Number(hra) : Math.round(salaryNum * 0.15);
+      const daNum = da !== undefined && da !== null ? Number(da) : (salaryNum - bsNum - hraNum);
+      const bonusNum = Number(bonus || 0);
+
+      if (!user.salaryTimelines) user.salaryTimelines = [];
+
+      const effDate = effectiveFrom ? new Date(`${effectiveFrom}T00:00:00`) : (user.joiningDate || new Date());
+
+      if (user.salaryTimelines.length > 0) {
+        // Find latest/active timeline to update
+        const sortedTimelines = [...user.salaryTimelines].sort((a, b) => new Date(a.effectiveFrom).getTime() - new Date(b.effectiveFrom).getTime());
+        const activeTL = sortedTimelines[sortedTimelines.length - 1];
+        const targetIdx = user.salaryTimelines.findIndex(t => (t as any)._id?.toString() === (activeTL as any)._id?.toString() || t.effectiveFrom === activeTL.effectiveFrom);
+
+        if (targetIdx !== -1) {
+          user.salaryTimelines[targetIdx].monthlySalary = salaryNum;
+          user.salaryTimelines[targetIdx].basicSalary = bsNum;
+          user.salaryTimelines[targetIdx].hra = hraNum;
+          user.salaryTimelines[targetIdx].da = daNum;
+          user.salaryTimelines[targetIdx].bonus = bonusNum;
+          if (effectiveFrom) user.salaryTimelines[targetIdx].effectiveFrom = effDate;
+          user.salaryTimelines[targetIdx].updatedAt = new Date();
+        }
+      } else if (salaryNum > 0) {
+        user.salaryTimelines.push({
+          effectiveFrom: effDate,
+          monthlySalary: salaryNum,
+          basicSalary: bsNum,
+          hra: hraNum,
+          da: daNum,
+          bonus: bonusNum,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        } as any);
+      }
+
+      user.salaryTimelines.sort((a, b) => new Date(a.effectiveFrom).getTime() - new Date(b.effectiveFrom).getTime());
+      user.markModified('salaryTimelines');
+    }
+
     if (salaryDeductions) {
       if (!user.salaryDeductions) {
         user.salaryDeductions = {

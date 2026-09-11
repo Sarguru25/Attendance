@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         { recipientId: session.user.id },
         { targetRole: session.user.role }
       ]
-    } as any)
+    } as any, null, { bypassTenant: true })
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
@@ -49,14 +49,15 @@ export async function PUT(req: NextRequest) {
             { targetRole: session.user.role }
           ]
         } as any,
-        { $set: { isRead: true } }
+        { $set: { isRead: true } },
+        { bypassTenant: true } as any
       );
       return NextResponse.json({ message: 'All notifications marked as read' });
     }
 
     const { id } = await req.json();
     if (id) {
-      await Notification.findByIdAndUpdate(id, { $set: { isRead: true } });
+      await Notification.findByIdAndUpdate(id, { $set: { isRead: true } }, { bypassTenant: true });
       return NextResponse.json({ message: 'Notification marked as read' });
     }
 

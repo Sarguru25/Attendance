@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
+import Link from 'next/link';
 import { format } from 'date-fns';
-import { Search, CheckCircle, XCircle, Clock, User as UserIcon } from 'lucide-react';
+import { Search, CheckCircle, XCircle, Clock, User as UserIcon, Calendar } from 'lucide-react';
 import { api } from '@/services/api';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
@@ -51,6 +52,12 @@ export default function LeavesClient() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Leave Requests</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage employee leave applications.</p>
         </div>
+        <Link 
+          href="/admin/employees?tab=leaves"
+          className="w-full sm:w-auto flex justify-center items-center px-4 py-2 min-h-[44px] bg-secondary border border-border text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors shadow-sm font-bold text-sm"
+        >
+          Manage Leave Balances
+        </Link>
       </div>
 
       <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col md:flex-row gap-4 items-center">

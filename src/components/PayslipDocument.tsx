@@ -99,11 +99,11 @@ export const PayslipDocument = ({ payroll, user, company }: PayslipProps) => {
   const formatCurrency = (val: number) => `\u20B9${(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const monthlySalary = payroll.monthlySalary || 0;
-  const basicSalary = monthlySalary * 0.5;
-  const hraAllowance = monthlySalary * 0.2;
-  const otherAllowances = monthlySalary * 0.3;
-  const bonus = 0;
-  const grossSalary = monthlySalary;
+  const basicSalary = payroll.basicSalary ?? Math.round(monthlySalary * 0.5);
+  const hraAllowance = payroll.hra ?? Math.round(monthlySalary * 0.15);
+  const otherAllowances = payroll.da ?? (monthlySalary - basicSalary - hraAllowance);
+  const bonus = payroll.bonus || 0;
+  const grossSalary = basicSalary + hraAllowance + otherAllowances + bonus;
 
   const totalDeductions = payroll.deductionAmount ?? payroll.deductions ?? 0;
   const esi = payroll.salaryDeductionsSnapshot?.esi || 0;

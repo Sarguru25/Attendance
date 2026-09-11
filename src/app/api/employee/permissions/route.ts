@@ -12,10 +12,49 @@ export async function GET(req: NextRequest) {
     if (!session?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     await dbConnect();
-    const permissions = await Permission.find({ userId: session.user.id })
+
+    // Auto-heal legacy records stuck in status 'Approved'
+    const legacyApproved = await Permission.find({ userId: session.user.id, status: 'Approved' }, null, { bypassTenant: true });
+    for (const legacy of legacyApproved) {
+      const compMins = legacy.compensatedMinutes || 0;
+      const totalDuration = legacy.duration || 0;
+      const pending = Math.max(0, totalDuration - compMins);
+
+      if (pending === 0) {
+        legacy.status = 'Fully Compensated';
+      } else if (compMins > 0) {
+        legacy.status = 'Partially Compensated';
+      } else {
+        legacy.status = 'Pending Compensation';
+      }
+      legacy.pendingMinutes = pending;
+      await legacy.save({ bypassTenant: true } as any);
+
+      // Sync PermissionBalance for legacy record's month
+      const permDate = new Date(legacy.date);
+      const year = permDate.getFullYear();
+      const month = permDate.getMonth() + 1;
+      let balance = await PermissionBalance.findOne({ userId: session.user.id, year, month }, null, { bypassTenant: true });
+      if (balance) {
+        const monthStart = new Date(year, month - 1, 1);
+        const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+        const activePerms = await Permission.find({
+          userId: session.user.id,
+          date: { $gte: monthStart, $lte: monthEnd },
+          status: { $in: ['Pending Compensation', 'Partially Compensated', 'Fully Compensated', 'Approved'] }
+        }, null, { bypassTenant: true }).lean();
+
+        const totalUsed = activePerms.reduce((sum, p) => sum + (p.duration || 0), 0);
+        balance.usedMinutes = totalUsed;
+        balance.remainingMinutes = Math.max(0, balance.allowedMinutes - totalUsed);
+        await balance.save({ bypassTenant: true } as any);
+      }
+    }
+
+    const permissions = await Permission.find({ userId: session.user.id }, null, { bypassTenant: true })
       .sort({ date: -1, createdAt: -1 })
-      .populate('currentApprover', 'name email')
-      .populate('approvedBy', 'name email')
+      .populate({ path: 'currentApprover', select: 'name email', options: { bypassTenant: true } })
+      .populate({ path: 'approvedBy', select: 'name email', options: { bypassTenant: true } })
       .lean();
 
     return Response.json({ permissions }, { status: 200 });
@@ -43,7 +82,7 @@ export async function POST(req: NextRequest) {
     await dbConnect();
 
     // 1. Check if balance is available
-    let balance = await PermissionBalance.findOne({ userId: session.user.id, year, month });
+    let balance = await PermissionBalance.findOne({ userId: session.user.id, year, month }, null, { bypassTenant: true });
     if (!balance) {
       balance = await PermissionBalance.create({
         companyId: session.user.companyId,
@@ -57,11 +96,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Fetch user to get their manager/TL for approval routing
-    const user = await User.findById(session.user.id).lean();
+    const user = await User.findById(session.user.id, null, { bypassTenant: true }).lean();
     let currentApprover = user?.reportsTo;
     if (!currentApprover) {
       // If no manager, find an admin
-      const admin = await User.findOne({ role: 'admin', companyId: session.user.companyId });
+      const admin = await User.findOne({ role: 'admin' }, null, { bypassTenant: true });
       currentApprover = admin?._id;
     }
 

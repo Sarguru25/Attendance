@@ -303,7 +303,7 @@ export async function syncLeaveToAttendance(leave: any, overrideApproved: boolea
   const Shift = (await import('@/models/Shift')).default;
   const User = (await import('@/models/User')).default;
 
-  const user = await User.findById(leave.userId).populate('shiftId').lean();
+  const user = await User.findById(leave.userId, null, { bypassTenant: true }).populate({ path: 'shiftId', options: { bypassTenant: true } }).lean();
   if (!user) return;
 
   const shift = user.shiftId as any;
@@ -313,22 +313,30 @@ export async function syncLeaveToAttendance(leave: any, overrideApproved: boolea
   startDate.setHours(0, 0, 0, 0);
   endDate.setHours(0, 0, 0, 0);
 
+  const VALID_ATTENDANCE_STATUSES = [
+    'present', 'absent', 'half-day', 'late', 'Weekly Off', 'Work From Home',
+    'On Duty', 'Restricted Holiday', 'Leave', 'Holiday',
+    'Sick Leave', 'Casual Leave', 'Compensatory Off', 'Maternity Leave', 'Paternity Leave', 'Leave Without Pay'
+  ];
+  const fullDayStatus = VALID_ATTENDANCE_STATUSES.includes(leave.leaveType) ? leave.leaveType : 'Leave';
+  const isPaid = isLeaveTypePaid(leave.leaveType);
+
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     const attendanceDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0));
 
-    let attendance = await Attendance.findOne({ userId: leave.userId, date: attendanceDate });
+    let attendance = await Attendance.findOne({ userId: leave.userId, date: attendanceDate }, null, { bypassTenant: true });
     if (!attendance) {
       attendance = new Attendance({
         userId: leave.userId,
         date: attendanceDate,
         shiftId: shift?._id,
-        status: leave.duration === 'half_day' ? 'half-day' : leave.leaveType,
-        companyId: leave.companyId
+        status: leave.duration === 'half_day' ? 'half-day' : fullDayStatus,
+        companyId: leave.companyId || user.companyId
       });
     }
 
     if (leave.duration === 'full_day' || !leave.halfDaySession) {
-      attendance.status = leave.leaveType;
+      attendance.status = fullDayStatus;
       attendance.firstHalf = {
         status: 'leave',
         leaveId: leave._id,
@@ -339,6 +347,13 @@ export async function syncLeaveToAttendance(leave: any, overrideApproved: boolea
         leaveId: leave._id,
         leaveType: leave.leaveType
       };
+      if (isPaid) {
+        attendance.paidLeaveDays = 1;
+        attendance.unpaidLeaveDays = 0;
+      } else {
+        attendance.paidLeaveDays = 0;
+        attendance.unpaidLeaveDays = 1;
+      }
     } else if (leave.duration === 'half_day') {
       attendance.status = 'half-day';
       if (leave.halfDaySession === 'first_half') {
@@ -360,8 +375,13 @@ export async function syncLeaveToAttendance(leave: any, overrideApproved: boolea
           attendance.firstHalf = { status: null };
         }
       }
+      if (isPaid) {
+        attendance.paidLeaveDays = (attendance.paidLeaveDays || 0) + 0.5;
+      } else {
+        attendance.unpaidLeaveDays = (attendance.unpaidLeaveDays || 0) + 0.5;
+      }
     }
 
-    await attendance.save();
+    await attendance.save({ bypassTenant: true } as any);
   }
 }

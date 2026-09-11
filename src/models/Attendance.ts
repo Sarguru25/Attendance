@@ -41,7 +41,7 @@ export interface IAttendance extends Document {
   lateMinutes?: number;
   
   totalHours?: number;
-  status: 'present' | 'absent' | 'half-day' | 'late' | 'Weekly Off' | 'Work From Home' | 'On Duty' | 'Restricted Holiday' | 'Leave' | 'Holiday';
+  status: 'present' | 'absent' | 'half-day' | 'late' | 'Weekly Off' | 'Work From Home' | 'On Duty' | 'Restricted Holiday' | 'Leave' | 'Holiday' | 'Sick Leave' | 'Casual Leave' | 'Compensatory Off' | 'Maternity Leave' | 'Paternity Leave' | 'Leave Without Pay';
 
   // Permission Compensation fields
   scheduledMinutes?: number;
@@ -90,7 +90,28 @@ const AttendanceSchema: Schema = new Schema(
     lateMinutes: { type: Number, default: 0 },
     
     totalHours: { type: Number },
-    status: { type: String, enum: ['present', 'absent', 'half-day', 'late', 'Weekly Off', 'Work From Home', 'On Duty', 'Restricted Holiday', 'Leave', 'Holiday'], required: true },
+    status: {
+      type: String,
+      enum: [
+        'present',
+        'absent',
+        'half-day',
+        'late',
+        'Weekly Off',
+        'Work From Home',
+        'On Duty',
+        'Restricted Holiday',
+        'Leave',
+        'Holiday',
+        'Sick Leave',
+        'Casual Leave',
+        'Compensatory Off',
+        'Maternity Leave',
+        'Paternity Leave',
+        'Leave Without Pay'
+      ],
+      required: true
+    },
 
     scheduledMinutes: { type: Number, default: 0 },
     workedMinutes: { type: Number, default: 0 },

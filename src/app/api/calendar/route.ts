@@ -5,6 +5,7 @@ import Attendance from '@/models/Attendance';
 import Leave from '@/models/Leave';
 import Holiday from '@/models/Holiday';
 import User from '@/models/User';
+import Shift from '@/models/Shift';
 import { startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import mongoose from 'mongoose';
 

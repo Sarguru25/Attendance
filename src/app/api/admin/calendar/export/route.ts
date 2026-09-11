@@ -5,6 +5,7 @@ import Attendance from '@/models/Attendance';
 import Leave from '@/models/Leave';
 import Holiday from '@/models/Holiday';
 import User from '@/models/User';
+import Shift from '@/models/Shift';
 import { startOfMonth, endOfMonth, parseISO } from 'date-fns';
 
 export async function GET(req: NextRequest) {
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     const users = await User.find({ 
       role: { $ne: 'super_admin' },
       name: { $ne: 'Super Admin' }
-    }).select('name employeeId joiningDate').lean();
+    }).select('name employeeId joiningDate shiftId').populate('shiftId').lean();
 
     // Fetch Attendance
     const attendances = await Attendance.find({

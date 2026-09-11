@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { format, subMonths } from 'date-fns';
-import { Search, Download, PlayCircle, FileText, Loader2, User as UserIcon, Mail, X, Trash2 } from 'lucide-react';
+import { Search, Download, PlayCircle, FileText, Loader2, User as UserIcon, Mail, X, Trash2, Lock, Unlock } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { useCompany } from '@/components/CompanyProvider';
 import { api } from '@/services/api';
@@ -22,6 +22,7 @@ export default function PayrollClient() {
   const { data, error, isLoading, mutate } = useSWR(`/api/admin/payroll?month=${month}&year=${year}`, fetcher);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isLocking, setIsLocking] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
@@ -29,6 +30,33 @@ export default function PayrollClient() {
   const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
   const [isSendingBulk, setIsSendingBulk] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+
+  const isMonthLocked = (data?.payrolls || []).length > 0 && (data?.payrolls || []).every((p: any) => p.isLocked);
+
+  const handleToggleLock = async () => {
+    if (!payrolls.length) return;
+    const targetLockState = !isMonthLocked;
+    const actionName = targetLockState ? 'Lock' : 'Unlock';
+    if (!confirm(`Are you sure you want to ${actionName.toLowerCase()} payroll for ${format(currentDate, 'MMMM yyyy')}?`)) return;
+
+    setIsLocking(true);
+    try {
+      const res = await api('/api/admin/payroll/lock', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month, year, isLocked: targetLockState })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to ${actionName.toLowerCase()} payroll`);
+      }
+      mutate();
+    } catch (error: any) {
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsLocking(false);
+    }
+  };
 
   const handleDeleteMonth = async () => {
     if (!payrolls.length) return;
@@ -174,37 +202,129 @@ export default function PayrollClient() {
   const handleExport = async () => {
     if (!payrolls.length) return;
     const workbook = new ExcelJS.Workbook();
+    const monthYearStr = format(currentDate, 'MMMM yyyy');
     const worksheet = workbook.addWorksheet(`Payroll_${format(currentDate, 'MMM_yyyy')}`);
 
-    worksheet.columns = [
-      { header: 'Employee ID', key: 'empId', width: 15 },
-      { header: 'Name', key: 'name', width: 30 },
-      { header: 'Shift', key: 'shift', width: 15 },
-      { header: 'Working Pattern', key: 'workingPattern', width: 20 },
-      { header: 'Working Days', key: 'workingDays', width: 15 },
-      { header: 'Present Days', key: 'presentDays', width: 15 },
-      { header: 'Absent Days', key: 'absentDays', width: 15 },
-      { header: 'Leave Days', key: 'leaveDays', width: 15 },
-      { header: 'Weekly Offs', key: 'weeklyOffs', width: 15 },
-      { header: 'Gross Salary', key: 'gross', width: 20 },
-      { header: 'Deductions', key: 'deductions', width: 20 },
-      { header: 'Net Salary', key: 'net', width: 20 },
+    const companyTitle = (activeCompany?.companyName || 'TRUFLOW SOLUTIONS PRIVATE LIMITED').toUpperCase();
+
+    // Row 1: Company Title Banner across Columns A:L
+    worksheet.mergeCells('A1:L1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = companyTitle;
+    titleCell.font = { name: 'Calibri', size: 14, bold: true };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    titleCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FCE4D6' }
+    };
+    titleCell.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
+    };
+    worksheet.getRow(1).height = 32;
+
+    // Row 2: Headers
+    const headers = [
+      'S.No',
+      'Employee Name',
+      'Basic',
+      'HRA',
+      'Dearness Allowance',
+      'Basic+ DA',
+      'ESI Deductions',
+      'Rental Deduction',
+      'Loan Deductions',
+      'Other deductions',
+      'Gross Monthly',
+      monthYearStr
     ];
 
-    payrolls.forEach((p: any) => {
-      worksheet.addRow({
-        empId: p.userId?.employeeId,
-        name: p.userId?.name,
-        shift: p.userId?.shiftId?.shiftName || 'N/A',
-        workingPattern: p.userId?.shiftId?.workingDays?.map((d: string) => d.slice(0, 3)).join('-') || 'N/A',
-        workingDays: p.totalWorkingDays,
-        presentDays: p.presentDays,
-        absentDays: p.absentDays,
-        leaveDays: p.leaveDays || 0,
-        weeklyOffs: p.weeklyOffDays || 0,
-        gross: p.grossSalary || p.monthlySalary,
-        deductions: p.deductionAmount || p.deductions,
-        net: p.netSalary || p.finalSalary,
+    const headerRow = worksheet.getRow(2);
+    headerRow.values = headers;
+    headerRow.height = 28;
+
+    headerRow.eachCell((cell) => {
+      cell.font = { name: 'Calibri', size: 10, bold: true };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'F2F2F2' }
+      };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    });
+
+    // Column widths
+    worksheet.getColumn(1).width = 8;   // S.No
+    worksheet.getColumn(2).width = 25;  // Employee Name
+    worksheet.getColumn(3).width = 15;  // Basic
+    worksheet.getColumn(4).width = 15;  // HRA
+    worksheet.getColumn(5).width = 20;  // Dearness Allowance
+    worksheet.getColumn(6).width = 18;  // Basic+ DA
+    worksheet.getColumn(7).width = 16;  // ESI Deductions
+    worksheet.getColumn(8).width = 18;  // Rental Deduction
+    worksheet.getColumn(9).width = 18;  // Loan Deductions
+    worksheet.getColumn(10).width = 18; // Other deductions
+    worksheet.getColumn(11).width = 18; // Gross Monthly
+    worksheet.getColumn(12).width = 16; // Month Year
+
+    // Data Rows
+    payrolls.forEach((p: any, idx: number) => {
+      const monthlySalary = p.monthlySalary || 0;
+      const basic = p.basicSalary ?? Math.round(monthlySalary * 0.5);
+      const hra = p.hra ?? Math.round(monthlySalary * 0.15);
+      const da = p.da ?? (monthlySalary - basic - hra);
+      const basicPlusDa = p.basicPlusDa ?? (basic + da);
+
+      const esi = p.esiDeduction ?? p.salaryDeductionsSnapshot?.esi ?? 0;
+      const rental = p.rentalDeduction ?? p.salaryDeductionsSnapshot?.hra ?? 0;
+      const loan = p.loanDeduction ?? p.salaryDeductionsSnapshot?.loan ?? 0;
+      const otherDeductions = p.otherDeductions ?? Math.max(0, (p.deductionAmount || 0) - esi - rental - loan);
+      const grossMonthly = p.monthlySalary ?? (basic + hra + da);
+      const netMonthSalary = p.netSalary ?? p.finalSalary ?? 0;
+
+      const dataRow = worksheet.addRow([
+        idx + 1,
+        p.userId?.name || 'N/A',
+        basic,
+        hra,
+        da,
+        basicPlusDa,
+        esi,
+        rental,
+        loan,
+        otherDeductions,
+        grossMonthly,
+        netMonthSalary
+      ]);
+
+      dataRow.height = 22;
+
+      dataRow.eachCell((cell, colNumber) => {
+        cell.font = { name: 'Calibri', size: 10 };
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+
+        if (colNumber === 1) {
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        } else if (colNumber === 2) {
+          cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        } else {
+          cell.alignment = { horizontal: 'right', vertical: 'middle' };
+          cell.numFmt = '#,##0';
+        }
       });
     });
 
@@ -246,9 +366,9 @@ export default function PayrollClient() {
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             <button
               onClick={handleDeleteMonth}
-              disabled={isDeleting || isGenerating || isSendingBulk || !payrolls.length}
+              disabled={isMonthLocked || isDeleting || isGenerating || isSendingBulk || !payrolls.length}
               className="w-full sm:w-auto flex justify-center items-center px-4 py-2 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl min-h-[44px] hover:bg-destructive/20 transition-colors shadow-sm font-bold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              title="Delete all payroll records for this month"
+              title={isMonthLocked ? "Unlock payroll first to delete" : "Delete all payroll records for this month"}
             >
               {isDeleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
               Delete Month
@@ -271,8 +391,9 @@ export default function PayrollClient() {
             </button>
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || isSendingBulk || isDeleting}
+              disabled={isMonthLocked || isGenerating || isSendingBulk || isDeleting}
               className="w-full sm:w-auto flex justify-center items-center px-4 py-2 bg-primary text-primary-foreground rounded-xl min-h-[44px] hover:bg-primary/90 transition-colors shadow-sm font-bold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              title={isMonthLocked ? "Unlock payroll first to regenerate" : "Generate payroll"}
             >
               {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <PlayCircle className="h-4 w-4 mr-2" />}
               Generate
@@ -299,9 +420,31 @@ export default function PayrollClient() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <div className="flex w-full sm:w-auto">
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                {payrolls.length > 0 && (
+                  <button
+                    onClick={handleToggleLock}
+                    disabled={isLocking || isGenerating || isDeleting}
+                    className={`flex items-center justify-center gap-2 px-3.5 py-2 border rounded-xl min-h-[44px] text-xs font-bold transition-all shadow-sm shrink-0 disabled:opacity-50 ${
+                      isMonthLocked 
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20' 
+                        : 'bg-background border-border text-foreground hover:bg-muted'
+                    }`}
+                    title={isMonthLocked ? "Unlock payroll for this month" : "Lock payroll for this month to prevent changes"}
+                  >
+                    {isLocking ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isMonthLocked ? (
+                      <Lock className="h-4 w-4 text-amber-500" />
+                    ) : (
+                      <Unlock className="h-4 w-4" />
+                    )}
+                    <span>{isMonthLocked ? 'Payroll Locked' : 'Lock Payroll'}</span>
+                  </button>
+                )}
+
                 <select
-                  className="w-full sm:w-auto block pl-3 pr-10 py-2 min-h-[44px] text-base border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary sm:text-sm rounded-xl transition-colors font-bold"
+                  className="w-full sm:w-auto block pl-3 pr-10 py-2 min-h-[44px] text-base border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary sm:text-sm rounded-xl transition-colors font-bold cursor-pointer"
                   onChange={(e) => {
                     const [y, m] = e.target.value.split('-').map(Number);
                     setCurrentDate(new Date(y, m - 1, 1));
@@ -410,9 +553,9 @@ export default function PayrollClient() {
                               </button>
                               <button
                                 onClick={() => handleDeleteSingle(payroll._id, user?.name || 'employee')}
-                                disabled={deletingId === payroll._id || isSendingBulk || isDeleting}
+                                disabled={isMonthLocked || deletingId === payroll._id || isSendingBulk || isDeleting}
                                 className="text-destructive hover:text-destructive/80 transition-colors bg-destructive/10 px-3 py-2 min-h-[44px] rounded-xl border border-destructive/20 flex items-center disabled:opacity-50"
-                                title="Delete this payroll record"
+                                title={isMonthLocked ? "Unlock payroll first to delete" : "Delete this payroll record"}
                               >
                                 {deletingId === payroll._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                               </button>

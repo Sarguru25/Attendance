@@ -27,6 +27,13 @@ export interface IUser extends Document {
     _id?: mongoose.Types.ObjectId;
     effectiveFrom: Date;
     monthlySalary: number;
+    basicSalary?: number;
+    hra?: number;
+    da?: number;
+    bonus?: number;
+    esiDeduction?: number;
+    rentalDeduction?: number;
+    loanDeduction?: number;
     createdAt?: Date;
     updatedAt?: Date;
   }[];
@@ -84,6 +91,13 @@ const UserSchema: Schema = new Schema(
       {
         effectiveFrom: { type: Date, required: true },
         monthlySalary: { type: Number, required: true },
+        basicSalary: { type: Number, default: 0 },
+        hra: { type: Number, default: 0 },
+        da: { type: Number, default: 0 },
+        bonus: { type: Number, default: 0 },
+        esiDeduction: { type: Number, default: 0 },
+        rentalDeduction: { type: Number, default: 0 },
+        loanDeduction: { type: Number, default: 0 },
         createdAt: { type: Date, default: Date.now },
         updatedAt: { type: Date, default: Date.now }
       }

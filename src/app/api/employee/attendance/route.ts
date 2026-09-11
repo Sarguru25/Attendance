@@ -31,10 +31,10 @@ export async function GET(req: NextRequest) {
       requestQuery.date = { $gte: startDate, $lte: endDate };
     }
 
-    const attendances = await Attendance.find(query).sort({ date: -1 }).lean();
+    const attendances = await Attendance.find(query, null, { bypassTenant: true }).sort({ date: -1 }).lean();
 
-    const corrections = await AttendanceCorrection.find(requestQuery).sort({ createdAt: -1 }).lean();
-    const missPunches = await MissPunch.find(requestQuery).sort({ createdAt: -1 }).lean();
+    const corrections = await AttendanceCorrection.find(requestQuery, null, { bypassTenant: true }).sort({ createdAt: -1 }).lean();
+    const missPunches = await MissPunch.find(requestQuery, null, { bypassTenant: true }).sort({ createdAt: -1 }).lean();
 
     const attendancesWithStatus = attendances.map((att: any) => {
       const correction = corrections.find((c: any) => c.attendanceId?.toString() === att._id.toString());
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 
     attendancesWithStatus.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const user = await User.findById(session.user.id).populate('shiftId').lean();
+    const user = await User.findById(session.user.id, null, { bypassTenant: true }).populate({ path: 'shiftId', options: { bypassTenant: true } }).lean();
 
     return NextResponse.json({ attendances: attendancesWithStatus, user });
   } catch (error: any) {

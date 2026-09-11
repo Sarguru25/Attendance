@@ -4,9 +4,9 @@ export function generatePayslipHtml(payroll: any, user: any, company: any) {
   const monthName = format(new Date(payroll.year, payroll.month - 1), 'MMMM yyyy');
   
   const monthlySalary = payroll.monthlySalary || 0;
-  const basicSalary = monthlySalary * 0.5;
-  const hraAllowance = monthlySalary * 0.2;
-  const otherAllowances = monthlySalary * 0.3;
+  const basicSalary = payroll.basicSalary ?? Math.round(monthlySalary * 0.5);
+  const hraAllowance = payroll.hra ?? Math.round(monthlySalary * 0.15);
+  const otherAllowances = payroll.da ?? (monthlySalary - basicSalary - hraAllowance);
   
   const totalDeductions = payroll.deductionAmount ?? payroll.deductions ?? 0;
   const esi = payroll.salaryDeductionsSnapshot?.esi || 0;

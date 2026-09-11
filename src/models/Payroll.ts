@@ -22,11 +22,21 @@ export interface IPayroll extends Document {
   grossSalary: number;
   deductionAmount: number;
   netSalary: number;
+  basicSalary?: number;
+  hra?: number;
+  da?: number;
+  bonus?: number;
+  basicPlusDa?: number;
+  esiDeduction?: number;
+  rentalDeduction?: number;
+  loanDeduction?: number;
+  otherDeductions?: number;
   // Old fields for compatibility
   deductions?: number;
   finalSalary?: number;
   payslipUrl?: string;
   generatedAt: Date;
+  isLocked?: boolean;
   salaryDeductionsSnapshot?: {
     esi: number;
     hra: number;
@@ -57,11 +67,21 @@ const PayrollSchema: Schema = new Schema(
     grossSalary: { type: Number, default: 0 },
     deductionAmount: { type: Number, default: 0 },
     netSalary: { type: Number, default: 0 },
+    basicSalary: { type: Number, default: 0 },
+    hra: { type: Number, default: 0 },
+    da: { type: Number, default: 0 },
+    bonus: { type: Number, default: 0 },
+    basicPlusDa: { type: Number, default: 0 },
+    esiDeduction: { type: Number, default: 0 },
+    rentalDeduction: { type: Number, default: 0 },
+    loanDeduction: { type: Number, default: 0 },
+    otherDeductions: { type: Number, default: 0 },
     // Old fields
     deductions: { type: Number },
     finalSalary: { type: Number },
     payslipUrl: { type: String },
     generatedAt: { type: Date, default: Date.now },
+    isLocked: { type: Boolean, default: false },
     salaryDeductionsSnapshot: {
       esi: { type: Number, default: 0 },
       hra: { type: Number, default: 0 },

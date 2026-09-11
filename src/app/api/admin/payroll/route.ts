@@ -84,6 +84,12 @@ export async function POST(req: NextRequest) {
     const startDate = new Date(year, month - 1, 1, 0, 0, 0);
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
+    // Lock check: block generation if month/year is locked
+    const existingLocked = await Payroll.findOne({ month, year, isLocked: true });
+    if (existingLocked) {
+      return NextResponse.json({ error: 'Payroll for this month is locked and cannot be regenerated. Please unlock it first.' }, { status: 400 });
+    }
+
     // Get all active employees with their shifts
     const users = await User.find({ role: { $in: ['employee', 'intern', 'manager', 'team_head', 'department_head', 'director'] }, isActive: true }).populate('shiftId');
     console.log(`Found ${users.length} users for company ${activeCompanyId}`);
@@ -271,12 +277,21 @@ export async function POST(req: NextRequest) {
 
       const salaryInfo = getSalaryForPayrollPeriod(user, month, year);
       const monthlySalary = salaryInfo?.monthlySalary || user.monthlySalary || 0;
+      const timeline = salaryInfo?.timeline as any;
+
+      const basicSalary = timeline?.basicSalary ?? Math.round(monthlySalary * 0.5);
+      const hra = timeline?.hra ?? Math.round(monthlySalary * 0.15);
+      const da = timeline?.da ?? (monthlySalary - basicSalary - hra);
+      const bonus = timeline?.bonus || 0;
+      const basicPlusDa = basicSalary + da;
+
       const salaryTimelineEffectiveFrom = salaryInfo?.effectiveFrom ? new Date(salaryInfo.effectiveFrom) : undefined;
       const perDaySalary = totalCalendarDays > 0 ? monthlySalary / totalCalendarDays : 0; 
 
       // Deduction = Unemployed Days + Absent Days + Unpaid Leave Days (Paid leaves do not deduct from salary)
       const deductionDays = unemployedDays + absentDays + unpaidLeaveDays;
-      let deductionAmount = deductionDays * perDaySalary;
+      const otherDeductions = Math.round(deductionDays * perDaySalary);
+      let deductionAmount = otherDeductions;
 
       // Calculate extra pay for unconsumed compensatory off days worked in this month
       const payableExtraDays = Math.max(0, extraWorkedDays - compOffsTaken);
@@ -285,23 +300,21 @@ export async function POST(req: NextRequest) {
       const paidDays = totalCalendarDays - deductionDays + payableExtraDays;
       const leaveDays = paidLeaveDays + unpaidLeaveDays;
 
-      // New: Salary Deductions
-      let esiDeduction = 0;
-      let hraDeduction = 0;
+      // Salary Deductions
+      let esiDeduction = timeline?.esiDeduction || 0;
+      let hraDeduction = timeline?.rentalDeduction || 0;
       let loanDeduction = 0;
 
-      // ESI: Applies when salary <= 21000 and ESI toggle is enabled
-      if (monthlySalary <= 21000 && user.salaryDeductions?.esi?.enabled) {
+      // Fallbacks to user.salaryDeductions if not explicitly defined in timeline
+      if (esiDeduction === 0 && monthlySalary <= 21000 && user.salaryDeductions?.esi?.enabled) {
         esiDeduction = user.salaryDeductions.esi.amount || Math.round(monthlySalary * 0.0075);
       }
 
-      // Rental / HRA Deduction (Applies to all including interns)
-      if (user.salaryDeductions?.hra?.enabled) {
+      if (hraDeduction === 0 && user.salaryDeductions?.hra?.enabled) {
         hraDeduction = user.salaryDeductions.hra.amount || 0;
       }
 
-      // Company Loan Deduction (Applies to all including interns)
-      if (user.salaryDeductions?.loan?.enabled && user.salaryDeductions.loan.remainingMonths > 0) {
+      if (user.salaryDeductions?.loan?.enabled) {
         let isWithinDates = true;
         
         if (user.salaryDeductions.loan.startDate && user.salaryDeductions.loan.endDate) {
@@ -317,20 +330,24 @@ export async function POST(req: NextRequest) {
         }
 
         if (isWithinDates) {
-          loanDeduction = user.salaryDeductions.loan.monthlyDeduction || 0;
+          const monthlyLoan = user.salaryDeductions.loan.monthlyDeduction 
+            || (user.salaryDeductions.loan.totalMonths > 0 ? (user.salaryDeductions.loan.principalAmount / user.salaryDeductions.loan.totalMonths) : 0);
+          loanDeduction = Math.round(monthlyLoan);
 
           // Process Loan
-          user.salaryDeductions.loan.remainingMonths -= 1;
-          user.salaryDeductions.loan.totalPaid += loanDeduction;
+          if (user.salaryDeductions.loan.remainingMonths > 0) {
+            user.salaryDeductions.loan.remainingMonths -= 1;
+            user.salaryDeductions.loan.totalPaid = (user.salaryDeductions.loan.totalPaid || 0) + loanDeduction;
 
-          if (user.salaryDeductions.loan.remainingMonths <= 0) {
-            user.salaryDeductions.loan.completed = true;
-            user.salaryDeductions.loan.enabled = false;
-            user.salaryDeductions.loan.remainingMonths = 0;
+            if (user.salaryDeductions.loan.remainingMonths <= 0) {
+              user.salaryDeductions.loan.completed = true;
+              user.salaryDeductions.loan.enabled = false;
+              user.salaryDeductions.loan.remainingMonths = 0;
+            }
+
+            user.markModified('salaryDeductions');
+            await user.save();
           }
-
-          user.markModified('salaryDeductions');
-          await user.save();
         }
       }
 
@@ -343,8 +360,8 @@ export async function POST(req: NextRequest) {
 
       // Create new payroll record
       const payrollDoc = await Payroll.create({
+        companyId: user.companyId || activeCompanyId,
         userId: user._id,
-        companyId: activeCompanyId,
         month,
         year,
         totalCalendarDays,
@@ -361,6 +378,15 @@ export async function POST(req: NextRequest) {
         deductionDays,
         monthlySalary,
         salaryTimelineEffectiveFrom,
+        basicSalary,
+        hra,
+        da,
+        bonus,
+        basicPlusDa,
+        esiDeduction,
+        rentalDeduction: hraDeduction,
+        loanDeduction,
+        otherDeductions,
         grossSalary: monthlySalary,
         deductionAmount,
         netSalary,
@@ -424,6 +450,10 @@ export async function DELETE(req: NextRequest) {
     const payrollsToDelete = await Payroll.find(query);
     if (payrollsToDelete.length === 0) {
       return NextResponse.json({ message: 'No payroll records found to delete', count: 0 }, { status: 200 });
+    }
+
+    if (payrollsToDelete.some(p => p.isLocked)) {
+      return NextResponse.json({ error: 'Payroll for this month is locked and cannot be deleted. Please unlock it first.' }, { status: 400 });
     }
 
     // Revert loan deductions if loan was deducted in any of these payrolls

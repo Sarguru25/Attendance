@@ -16,7 +16,7 @@ export class LeaveBalanceEngine {
 
   static async syncLeaveBalance(employeeId: string) {
     await dbConnect();
-    const user = await User.findById(employeeId);
+    const user = await User.findById(employeeId, null, { bypassTenant: true });
     if (!user) throw new Error('User not found');
 
     const doj = user.joiningDate ? new Date(user.joiningDate) : new Date();
@@ -79,7 +79,7 @@ export class LeaveBalanceEngine {
     const compOffs = await CompOffCredit.find({
       employeeId,
       isUsed: false,
-    });
+    }, null, { bypassTenant: true });
     const earned = compOffs.length;
     if (user.leaveBalance.compensatoryOff.available !== earned) {
       user.leaveBalance.compensatoryOff.available = earned;
@@ -90,7 +90,7 @@ export class LeaveBalanceEngine {
 
     if (needsUpdate) {
       user.markModified('leaveBalance');
-      await user.save();
+      await user.save({ bypassTenant: true } as any);
     }
 
     return user.leaveBalance;

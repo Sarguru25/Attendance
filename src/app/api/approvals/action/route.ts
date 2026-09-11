@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       default: return NextResponse.json({ error: 'Invalid requestType' }, { status: 400 });
     }
 
-    request = await (ModelType as any).findById(id);
+    request = await (ModelType as any).findById(id, null, { bypassTenant: true });
     if (!request) return NextResponse.json({ error: 'Request not found' }, { status: 404 });
 
     // Permissions check
@@ -54,16 +54,52 @@ export async function POST(req: NextRequest) {
     }
 
     const previousStatus = request.status;
-    request.status = requestType === 'PERMISSION' ? (status === 'approved' ? 'Approved' : 'Rejected') : status;
+    if (requestType === 'PERMISSION') {
+      if (status === 'approved') {
+        const PermissionBalance = (await import('@/models/PermissionBalance')).default;
+        const permissionDate = new Date(request.date);
+        const year = permissionDate.getFullYear();
+        const month = permissionDate.getMonth() + 1;
 
-    if (requestType === 'LEAVE' || requestType === 'PERMISSION') {
-      request.approvedBy = userId;
-    } else if (status === 'approved' && (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION')) {
-      if (finalCheckIn) request.requestedCheckIn = new Date(finalCheckIn);
-      if (finalCheckOut) request.requestedCheckOut = new Date(finalCheckOut);
+        let balance = await PermissionBalance.findOne({ userId: request.userId, year, month }, null, { bypassTenant: true });
+        if (!balance) {
+          balance = await PermissionBalance.create({
+            companyId: request.companyId,
+            userId: request.userId,
+            year,
+            month,
+            allowedMinutes: 120,
+            usedMinutes: 0,
+            remainingMinutes: 120
+          });
+        }
+
+        if (request.duration > balance.remainingMinutes) {
+          return NextResponse.json({ error: `Insufficient permission balance for employee (${balance.remainingMinutes} mins remaining).` }, { status: 400 });
+        }
+
+        request.status = 'Pending Compensation';
+        request.pendingMinutes = request.duration;
+        request.approvedBy = userId;
+
+        balance.usedMinutes += request.duration;
+        balance.remainingMinutes -= request.duration;
+        await balance.save({ bypassTenant: true } as any);
+      } else {
+        request.status = 'Rejected';
+        request.approvedBy = userId;
+      }
+    } else {
+      request.status = status;
+      if (requestType === 'LEAVE') {
+        request.approvedBy = userId;
+      } else if (status === 'approved' && (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION')) {
+        if (finalCheckIn) request.requestedCheckIn = new Date(finalCheckIn);
+        if (finalCheckOut) request.requestedCheckOut = new Date(finalCheckOut);
+      }
     }
 
-    await request.save();
+    await request.save({ bypassTenant: true } as any);
 
     // If approved, handle side effects
     if (status === 'approved') {
@@ -73,7 +109,7 @@ export async function POST(req: NextRequest) {
 
         const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
         await LeaveBalanceEngine.syncLeaveBalance(request.userId.toString());
-        const user = await User.findById(request.userId);
+        const user = await User.findById(request.userId, null, { bypassTenant: true });
 
         if (user && user.leaveBalance) {
           if (request.leaveType === 'Casual Leave') {
@@ -98,18 +134,18 @@ export async function POST(req: NextRequest) {
             const credits = await CompOffCredit.find({
               employeeId: request.userId,
               isUsed: false
-            }).sort({ earnedDate: 1 }).limit(request.numberOfDays);
+            }, null, { bypassTenant: true }).sort({ earnedDate: 1 }).limit(request.numberOfDays);
 
             for (const credit of credits) {
               credit.isUsed = true;
               credit.usedAgainstLeave = request._id;
-              await credit.save();
+              await credit.save({ bypassTenant: true } as any);
             }
             user.leaveBalance.compensatoryOff.taken += credits.length;
             user.leaveBalance.compensatoryOff.available -= credits.length;
           }
           user.markModified('leaveBalance');
-          await user.save();
+          await user.save({ bypassTenant: true } as any);
         }
       } else if (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION') {
         let attendance;
@@ -118,7 +154,7 @@ export async function POST(req: NextRequest) {
           const d = new Date(request.date);
           const startOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
           const endOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
-          attendance = await Attendance.findOne({ userId: request.employeeId, date: { $gte: startOfDay, $lte: endOfDay } });
+          attendance = await Attendance.findOne({ userId: request.employeeId, date: { $gte: startOfDay, $lte: endOfDay } }, null, { bypassTenant: true });
 
           if (!attendance) {
             attendance = new Attendance({
@@ -128,14 +164,14 @@ export async function POST(req: NextRequest) {
             });
           }
         } else if (requestType === 'ATTENDANCE_CORRECTION') {
-          attendance = await Attendance.findById(request.attendanceId);
+          attendance = await Attendance.findById(request.attendanceId, null, { bypassTenant: true });
         }
 
         if (attendance) {
           if (request.requestedCheckIn) attendance.loginTime = request.requestedCheckIn;
           if (request.requestedCheckOut) attendance.logoutTime = request.requestedCheckOut;
 
-          const user = await User.findById(attendance.userId).populate('shiftId');
+          const user = await User.findById(attendance.userId, null, { bypassTenant: true }).populate({ path: 'shiftId', options: { bypassTenant: true } });
           const Leave = (await import('@/models/Leave')).default;
           const attendanceDate = new Date(attendance.date);
           const startOfDay = new Date(Date.UTC(attendanceDate.getUTCFullYear(), attendanceDate.getUTCMonth(), attendanceDate.getUTCDate(), 0, 0, 0, 0));
@@ -146,7 +182,7 @@ export async function POST(req: NextRequest) {
             status: 'approved',
             fromDate: { $lte: endOfDay },
             toDate: { $gte: startOfDay }
-          }).lean();
+          }, null, { bypassTenant: true }).lean();
 
           const { calculateDailyAttendance } = await import('@/lib/halfDayUtils');
           const calc = calculateDailyAttendance({
@@ -164,7 +200,7 @@ export async function POST(req: NextRequest) {
           attendance.unpaidLeaveDays = calc.unpaidLeaveDays;
           attendance.lateMinutes = calc.lateMinutes;
 
-          await attendance.save();
+          await attendance.save({ bypassTenant: true } as any);
 
           // Handle Comp-Off logic for Miss Punch / Correction approval
           const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -181,12 +217,12 @@ export async function POST(req: NextRequest) {
           const holiday = await Holiday.findOne({
             date: { $gte: startOfAttendanceDay, $lte: endOfAttendanceDay },
             holidayType: { $in: ['public', 'company'] }
-          });
+          }, null, { bypassTenant: true });
           const isHoliday = !!holiday;
 
           if (isWeeklyOff || isHoliday) {
             const CompOffCredit = (await import('@/models/CompOffCredit')).default;
-            const existingCredit = await CompOffCredit.findOne({ employeeId: attendance.userId, attendanceDate });
+            const existingCredit = await CompOffCredit.findOne({ employeeId: attendance.userId, attendanceDate }, null, { bypassTenant: true });
             if (!existingCredit) {
               const expiry = new Date(attendanceDate);
               expiry.setMonth(expiry.getMonth() + 3);

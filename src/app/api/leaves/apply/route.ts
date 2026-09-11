@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     await dbConnect();
 
-    const user = await User.findById(session.user.id);
+    const user = await User.findById(session.user.id, null, { bypassTenant: true });
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -108,8 +108,13 @@ export async function POST(req: NextRequest) {
       }
 
       for (const day of days) {
+        const dayStart = new Date(day);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(day);
+        dayEnd.setHours(23, 59, 59, 999);
+
         const isRH = await Holiday.exists({
-          date: day,
+          date: { $gte: dayStart, $lte: dayEnd },
           holidayType: 'restricted'
         });
         if (!isRH) {
@@ -127,7 +132,7 @@ export async function POST(req: NextRequest) {
 
     // If there's no manager, try to find an admin to be the current approver
     if (!currentApprover) {
-      const admin = await User.findOne({ role: 'admin' });
+      const admin = await User.findOne({ role: 'admin' }, null, { bypassTenant: true });
       if (admin) currentApprover = admin._id;
     }
     

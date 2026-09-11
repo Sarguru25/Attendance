@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const attendances = await Attendance.find({
       userId: { $in: teamMemberIds },
       date: today
-    }).lean();
+    }, null, { bypassTenant: true }).lean();
 
     const todayAttendancesMap = new Map();
     attendances.forEach(a => todayAttendancesMap.set(a.userId.toString(), a));

@@ -4,6 +4,13 @@ export interface ISalaryTimeline {
   _id?: any;
   effectiveFrom: Date | string;
   monthlySalary: number;
+  basicSalary?: number;
+  hra?: number;
+  da?: number;
+  bonus?: number;
+  esiDeduction?: number;
+  rentalDeduction?: number;
+  loanDeduction?: number;
   createdAt?: Date | string;
   updatedAt?: Date | string;
 }
@@ -15,6 +22,13 @@ export interface ITimelineDisplayItem {
   effectiveTo: string; // YYYY-MM-DD or 'Present'
   effectiveToFormatted: string; // e.g. 31-Aug-2026 or Present
   monthlySalary: number;
+  basicSalary: number;
+  hra: number;
+  da: number;
+  bonus: number;
+  esiDeduction: number;
+  rentalDeduction: number;
+  loanDeduction: number;
   status: 'Historical' | 'Current' | 'Future';
 }
 
@@ -83,13 +97,29 @@ export function computeTimelineDisplayList(
       status = 'Historical';
     }
 
+    const monthlySalary = item.monthlySalary || 0;
+    const basicSalary = item.basicSalary ?? Math.round(monthlySalary * 0.5);
+    const hra = item.hra ?? Math.round(monthlySalary * 0.15);
+    const da = item.da ?? (monthlySalary - basicSalary - hra);
+    const bonus = item.bonus || 0;
+    const esiDeduction = item.esiDeduction || 0;
+    const rentalDeduction = item.rentalDeduction || 0;
+    const loanDeduction = item.loanDeduction || 0;
+
     return {
       _id: item._id?.toString(),
       effectiveFrom: effFromYMD,
       effectiveFromFormatted: effFromFormatted,
       effectiveTo: effToYMD,
       effectiveToFormatted: effToFormatted,
-      monthlySalary: item.monthlySalary,
+      monthlySalary,
+      basicSalary,
+      hra,
+      da,
+      bonus,
+      esiDeduction,
+      rentalDeduction,
+      loanDeduction,
       status,
     };
   });

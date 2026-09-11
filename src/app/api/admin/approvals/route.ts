@@ -6,6 +6,7 @@ import MissPunch from '@/models/MissPunch';
 import AttendanceCorrection from '@/models/AttendanceCorrection';
 import OvertimeRequest from '@/models/OvertimeRequest';
 import WFHRequest from '@/models/WFHRequest';
+import Permission from '@/models/Permission';
 import User from '@/models/User';
 
 export async function GET(req: NextRequest) {
@@ -27,13 +28,15 @@ export async function GET(req: NextRequest) {
       missPunches,
       attendanceCorrections,
       overtimes,
-      wfhs
+      wfhs,
+      permissions
     ] = await Promise.all([
-      Leave.find({ status: 'pending' }).populate('userId', 'name employeeId').lean(),
-      MissPunch.find({ status: 'pending' }).populate('employeeId', 'name employeeId').lean(),
-      AttendanceCorrection.find({ status: 'pending' }).populate('employeeId', 'name employeeId').lean(),
-      OvertimeRequest.find({ status: 'pending' }).populate('employeeId', 'name employeeId').lean(),
-      WFHRequest.find({ status: 'pending' }).populate('employeeId', 'name employeeId').lean(),
+      Leave.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'userId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      MissPunch.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      AttendanceCorrection.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      OvertimeRequest.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      WFHRequest.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      Permission.find({ status: 'Pending Approval' }, null, { bypassTenant: true }).populate({ path: 'userId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
     ]);
 
     // Normalize data structure for UI
@@ -43,6 +46,7 @@ export async function GET(req: NextRequest) {
       ...attendanceCorrections.map(a => ({ ...a, _id: a._id?.toString(), requestType: 'ATTENDANCE_CORRECTION', employee: a.employeeId })),
       ...overtimes.map(o => ({ ...o, _id: o._id?.toString(), requestType: 'OVERTIME', employee: o.employeeId })),
       ...wfhs.map(w => ({ ...w, _id: w._id?.toString(), requestType: 'WFH', employee: w.employeeId })),
+      ...permissions.map(p => ({ ...p, _id: p._id?.toString(), requestType: 'PERMISSION', employee: p.userId })),
     ];
 
     // Sort approvals by created date if needed, though they might not have createdAt universally, assuming they do
