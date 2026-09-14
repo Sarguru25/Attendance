@@ -51,6 +51,9 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
     await permission.save();
 
+    const { recalculateAttendanceForUserAndDate } = await import('@/lib/attendanceUtils');
+    await recalculateAttendanceForUserAndDate(permission.userId, permission.date);
+
     // Notify employee
     await Notification.create({
       recipientId: permission.userId,

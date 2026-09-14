@@ -58,11 +58,19 @@ export async function GET(req: NextRequest) {
       date: { $gte: startDate, $lte: endDate }
     }).lean();
 
+    // Fetch Approved Permissions
+    const Permission = (await import('@/models/Permission')).default;
+    const permissions = await Permission.find({
+      date: { $gte: startDate, $lte: endDate },
+      status: { $in: ['Approved', 'Pending Compensation', 'Partially Compensated', 'Fully Compensated'] as any }
+    }).lean();
+
     return NextResponse.json({ 
       users,
       attendances,
       leaves,
-      holidays
+      holidays,
+      permissions
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

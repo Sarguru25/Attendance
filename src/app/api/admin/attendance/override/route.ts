@@ -360,6 +360,22 @@ export async function POST(req: NextRequest) {
         finalStatus = 'half-day';
       }
 
+      const Permission = (await import('@/models/Permission')).default;
+      const approvedPermissions = await Permission.find({
+        userId,
+        date: { $gte: attendanceDate, $lte: new Date(attendanceDate.getTime() + 23*3600*1000 + 59*60*1000) },
+        status: { $in: ['Approved', 'Pending Compensation', 'Partially Compensated', 'Fully Compensated'] as any }
+      }).lean();
+
+      const { calculateEffectiveExpectedCheckIn, mergePermissionIntervals } = await import('@/lib/attendanceUtils');
+      const { totalPermissionMinutes, primaryStart, primaryEnd } = mergePermissionIntervals(approvedPermissions);
+      const shiftFirstSession = (user.shiftId as any)?.sessions?.sort((a: any, b: any) => a.order - b.order)[0];
+      const shiftStartStr = shiftFirstSession?.startTime || '09:00';
+      const { effectiveCheckInStart, effectiveCheckInMinutes } = calculateEffectiveExpectedCheckIn({
+        shiftStart: shiftStartStr,
+        permissions: approvedPermissions
+      });
+
       if (finalStatus === 'present' && sessions && sessions.length > 0 && user.shiftId && (user.shiftId as any).sessions?.length > 0) {
         const sortedSessions = [...sessions].sort((a: any, b: any) => a.order - b.order);
         const firstCheckIn = sortedSessions.find(s => s.checkIn)?.checkIn;
@@ -367,15 +383,14 @@ export async function POST(req: NextRequest) {
         if (firstCheckIn) {
            const [loginH, loginM] = firstCheckIn.split(':').map(Number);
            const loginMinutes = loginH * 60 + loginM;
+           const graceTime = shiftFirstSession?.graceTime || 0;
            
-           const shiftFirstSession = (user.shiftId as any).sessions.sort((a: any, b: any) => a.order - b.order)[0];
-           const [startH, startM] = shiftFirstSession.startTime.split(':').map(Number);
-           const graceTime = shiftFirstSession.graceTime || 0;
-           const shiftStartMinutes = startH * 60 + startM;
-           
-           if (loginMinutes > shiftStartMinutes + graceTime) {
+           if (loginMinutes > effectiveCheckInMinutes + graceTime) {
              finalStatus = 'late';
-             lateMinutes = loginMinutes - shiftStartMinutes;
+             lateMinutes = loginMinutes - effectiveCheckInMinutes;
+           } else {
+             finalStatus = 'present';
+             lateMinutes = 0;
            }
         }
       }
@@ -395,7 +410,11 @@ export async function POST(req: NextRequest) {
             workedMinutes,
             totalExtraMinutes,
             availableExtraMinutes,
-            lateMinutes
+            lateMinutes,
+            permissionMinutes: totalPermissionMinutes,
+            permissionStart: primaryStart || undefined,
+            permissionEnd: primaryEnd || undefined,
+            effectiveCheckInStart: effectiveCheckInStart || undefined
           }
         },
         { new: true, upsert: true }

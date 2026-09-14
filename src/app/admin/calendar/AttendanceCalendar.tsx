@@ -156,6 +156,10 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
       }
     };
 
+    const permission = data.permissions?.find((p: any) => isSameDay(new Date(p.date), day));
+    const hasPermission = !!permission || (attendance?.permissionMinutes && attendance.permissionMinutes > 0);
+    const permLabel = permission ? `${permission.fromTime}-${permission.toTime}` : (attendance?.permissionStart && attendance?.permissionEnd ? `${attendance.permissionStart}-${attendance.permissionEnd}` : 'Permission');
+
     // FIRST HALF
     let firstHalf: any = { label: 'Absent', color: getStyle('absent') };
 
@@ -167,13 +171,13 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
       const isLate = attendance?.firstHalf?.status === 'late' || (attendance?.sessions?.[0]?.lateMinutes > 0);
       const lateMins = attendance?.firstHalf?.lateMinutes || attendance?.sessions?.[0]?.lateMinutes;
       firstHalf = {
-        label: isLate ? `Late ${lateMins ? `(${lateMins}m)` : ''}` : 'Present',
+        label: isLate ? `Late ${lateMins ? `(${lateMins}m)` : ''}` : (hasPermission ? `Present (${permLabel})` : 'Present'),
         color: getStyle(isLate ? 'late' : 'present')
       };
     } else if (attendance?.firstHalf?.status === 'absent' || attendance?.status === 'absent') {
       firstHalf = { label: 'Absent', color: getStyle('absent') };
     } else if (!isPast && !attendance) {
-      firstHalf = { label: '-', color: getStyle('none') };
+      firstHalf = { label: hasPermission ? `Perm (${permLabel})` : '-', color: hasPermission ? 'bg-primary/10 text-primary border-primary/20' : getStyle('none') };
     }
 
     // SECOND HALF
@@ -198,7 +202,9 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
 
     return {
       firstHalf,
-      secondHalf
+      secondHalf,
+      hasPermission,
+      permLabel
     };
   };
 

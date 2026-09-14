@@ -73,8 +73,23 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'You are already checked in for the Second Half.' }, { status: 400 });
     }
 
+    // Check for approved permission today
+    const Permission = (await import('@/models/Permission')).default;
+    const approvedPermissions = await Permission.find({
+      userId,
+      date: { $gte: todayStart, $lte: todayEnd },
+      status: { $in: ['Approved', 'Pending Compensation', 'Partially Compensated', 'Fully Compensated'] as any }
+    }).lean();
+
+    const { calculateEffectiveExpectedCheckIn, mergePermissionIntervals } = await import('@/lib/attendanceUtils');
+    const { totalPermissionMinutes, primaryStart, primaryEnd } = mergePermissionIntervals(approvedPermissions);
+    const { effectiveCheckInStart, effectiveCheckInMinutes } = calculateEffectiveExpectedCheckIn({
+      shiftStart: boundaries.firstHalf.start,
+      permissions: approvedPermissions
+    });
+
     let targetHalf: 'firstHalf' | 'secondHalf' = 'firstHalf';
-    let expectedStartTimeStr = boundaries.firstHalf.start;
+    let expectedStartTimeStr = effectiveCheckInStart;
 
     if (isFirstHalfLeave) {
       targetHalf = 'secondHalf';
@@ -84,7 +99,7 @@ export async function POST(req: NextRequest) {
       expectedStartTimeStr = boundaries.secondHalf.start;
     } else if (isSecondHalfLeave) {
       targetHalf = 'firstHalf';
-      expectedStartTimeStr = boundaries.firstHalf.start;
+      expectedStartTimeStr = effectiveCheckInStart;
     }
 
     const [startH, startM] = expectedStartTimeStr.split(':').map(Number);
@@ -92,13 +107,18 @@ export async function POST(req: NextRequest) {
     const [curH, curM] = currentIstTime.split(':').map(Number);
 
     const curMins = curH * 60 + curM;
-    const expectedMins = startH * 60 + startM;
+    const expectedMins = targetHalf === 'firstHalf' ? effectiveCheckInMinutes : (startH * 60 + startM);
     const graceTime = (shift.sessions && shift.sessions[targetHalf === 'secondHalf' ? 1 : 0]?.graceTime) || shift.sessions?.[0]?.graceTime || 0;
 
     let lateMinutes = 0;
     if (curMins > expectedMins + graceTime) {
       lateMinutes = curMins - expectedMins;
     }
+
+    existingAttendance.permissionMinutes = totalPermissionMinutes;
+    existingAttendance.permissionStart = primaryStart || undefined;
+    existingAttendance.permissionEnd = primaryEnd || undefined;
+    existingAttendance.effectiveCheckInStart = effectiveCheckInStart || undefined;
 
     const sessionOrder = targetHalf === 'firstHalf' ? 1 : 2;
 

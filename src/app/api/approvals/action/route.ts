@@ -101,6 +101,11 @@ export async function POST(req: NextRequest) {
 
     await request.save({ bypassTenant: true } as any);
 
+    if (requestType === 'PERMISSION') {
+      const { recalculateAttendanceForUserAndDate } = await import('@/lib/attendanceUtils');
+      await recalculateAttendanceForUserAndDate(request.userId, request.date);
+    }
+
     // If approved, handle side effects
     if (status === 'approved') {
       if (requestType === 'LEAVE') {

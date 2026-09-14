@@ -89,6 +89,7 @@ export function calculateDailyAttendance({
   date,
   existingAttendance,
   approvedLeaves = [],
+  approvedPermissions = [],
   isHoliday = false,
   isWeeklyOff = false
 }: {
@@ -96,10 +97,17 @@ export function calculateDailyAttendance({
   date: Date;
   existingAttendance?: any;
   approvedLeaves?: any[];
+  approvedPermissions?: any[];
   isHoliday?: boolean;
   isWeeklyOff?: boolean;
 }) {
   const boundaries = calculateHalfSession(shift);
+  const { mergePermissionIntervals, calculateEffectiveExpectedCheckIn } = require('./attendanceUtils');
+  const { totalPermissionMinutes, primaryStart, primaryEnd } = mergePermissionIntervals(approvedPermissions);
+  const { effectiveCheckInStart, effectiveCheckInMinutes } = calculateEffectiveExpectedCheckIn({
+    shiftStart: boundaries.firstHalf.start,
+    permissions: approvedPermissions
+  });
 
   const fullDayLeave = approvedLeaves.find(l => l.duration !== 'half_day');
   const firstHalfLeave = approvedLeaves.find(l => l.duration === 'half_day' && l.halfDaySession === 'first_half');
@@ -289,7 +297,11 @@ export function calculateDailyAttendance({
     totalLeaveDays,
     status: finalStatus,
     finalStatus,
-    lateMinutes: totalLateMinutes
+    lateMinutes: totalLateMinutes,
+    permissionMinutes: totalPermissionMinutes,
+    permissionStart: primaryStart,
+    permissionEnd: primaryEnd,
+    effectiveCheckInStart
   };
 }
 

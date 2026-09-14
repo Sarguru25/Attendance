@@ -43,13 +43,18 @@ export interface IAttendance extends Document {
   totalHours?: number;
   status: 'present' | 'absent' | 'half-day' | 'late' | 'Weekly Off' | 'Work From Home' | 'On Duty' | 'Restricted Holiday' | 'Leave' | 'Holiday' | 'Sick Leave' | 'Casual Leave' | 'Compensatory Off' | 'Maternity Leave' | 'Paternity Leave' | 'Leave Without Pay';
 
-  // Permission Compensation fields
+  // Permission Compensation & Morning Permission fields
   scheduledMinutes?: number;
   workedMinutes?: number;
   extraBeforeShiftMinutes?: number;
   extraAfterShiftMinutes?: number;
   totalExtraMinutes?: number;
   availableExtraMinutes?: number;
+
+  permissionMinutes?: number;
+  permissionStart?: string;
+  permissionEnd?: string;
+  effectiveCheckInStart?: string;
 }
 
 const HalfSessionSchema = new Schema({
@@ -119,6 +124,11 @@ const AttendanceSchema: Schema = new Schema(
     extraAfterShiftMinutes: { type: Number, default: 0 },
     totalExtraMinutes: { type: Number, default: 0 },
     availableExtraMinutes: { type: Number, default: 0 },
+
+    permissionMinutes: { type: Number, default: 0 },
+    permissionStart: { type: String, default: null },
+    permissionEnd: { type: String, default: null },
+    effectiveCheckInStart: { type: String, default: null },
   },
   { timestamps: true }
 );

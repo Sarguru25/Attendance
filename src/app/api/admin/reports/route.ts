@@ -48,6 +48,8 @@ export async function GET(req: NextRequest) {
           department: user?.department || 'Unknown',
           date: a.date,
           shiftStart: shift ? shift.startTime : '-',
+          effectiveCheckInStart: a.effectiveCheckInStart || (shift ? shift.startTime : '-'),
+          permissionMinutes: a.permissionMinutes || 0,
           actualCheckIn: a.loginTime || '-',
           lateBy: a.lateMinutes || 0
         };
