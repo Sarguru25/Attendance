@@ -182,10 +182,6 @@ export async function POST(req: NextRequest) {
           return d >= from && d <= to;
         });
 
-        if (att) {
-          if (['present', 'late', 'Work From Home', 'On Duty'].includes(att.status)) presentDays++;
-          if (att.status === 'half-day') halfDays++;
-        }
 
         if (isWorkingDay) {
           if (att && (att.firstHalf || att.secondHalf)) {

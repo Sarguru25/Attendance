@@ -96,15 +96,18 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
   const getDayDetails = (day: Date) => {
     if (!data || data.error) return null;
 
-    // 1. Check Holiday
+    // 1. Check Holiday (Only Public or Company Holidays are mandatory company-wide closures)
     const holiday = data.holidays?.find((h: any) => isSameDay(new Date(h.date), day));
-    if (holiday) {
+    const isMandatoryHoliday = holiday && (holiday.holidayType === 'public' || holiday.holidayType === 'company');
+    if (isMandatoryHoliday) {
       return {
         isHoliday: true,
         label: holiday.holidayName,
         color: 'bg-primary/10 text-primary border-primary/20'
       };
     }
+
+    const restrictedHoliday = holiday && holiday.holidayType === 'restricted' ? holiday : null;
 
     // 2. Check Weekly Off from Shift
     const isShiftWeeklyOff = isDayWeeklyOff(day);
@@ -128,6 +131,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     if (isBeforeJoining && !attendance && !leave) {
       return {
         isBeforeJoining: true,
+        restrictedHoliday,
         label: '-',
         color: 'bg-muted/20 text-muted-foreground border-transparent'
       };
@@ -136,6 +140,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     if ((isShiftWeeklyOff && !attendance && !leave) || (isAttendanceWeeklyOff && !leave)) {
       return {
         isWeeklyOff: true,
+        restrictedHoliday,
         label: 'Weekly Off',
         color: 'bg-muted/30 text-muted-foreground border-transparent'
       };
@@ -201,6 +206,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     }
 
     return {
+      restrictedHoliday,
       firstHalf,
       secondHalf,
       hasPermission,
@@ -375,7 +381,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
           const currentDay = new Date(day).setHours(0, 0, 0, 0);
           const now = new Date().setHours(0, 0, 0, 0);
 
-          const isHoliday = exportData.holidays?.some((h: any) => isSameDay(new Date(h.date), day));
+          const isHoliday = exportData.holidays?.some((h: any) => isSameDay(new Date(h.date), day) && (h.holidayType === 'public' || h.holidayType === 'company'));
           const leave = exportData.leaves?.find((l: any) => {
             const from = new Date(l.fromDate).setHours(0, 0, 0, 0);
             const to = new Date(l.toDate).setHours(0, 0, 0, 0);
@@ -551,8 +557,15 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
                       )}
 
                       {details && details.isWeeklyOff && (
-                        <div className="px-1.5 py-1 rounded-md border text-[11px] font-semibold bg-muted/40 text-muted-foreground border-transparent truncate">
-                          Weekly Off
+                        <div className="space-y-1">
+                          {details.restrictedHoliday && (
+                            <div className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-warning/15 text-warning border border-warning/30 truncate" title={`Restricted Holiday: ${details.restrictedHoliday.holidayName}`}>
+                              RL: {details.restrictedHoliday.holidayName}
+                            </div>
+                          )}
+                          <div className="px-1.5 py-1 rounded-md border text-[11px] font-semibold bg-muted/40 text-muted-foreground border-transparent truncate">
+                            Weekly Off
+                          </div>
                         </div>
                       )}
 
@@ -562,6 +575,11 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
 
                       {details && details.firstHalf && details.secondHalf && (
                         <div className="space-y-1">
+                          {details.restrictedHoliday && (
+                            <div className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-warning/15 text-warning border border-warning/30 truncate" title={`Restricted Holiday: ${details.restrictedHoliday.holidayName}`}>
+                              RL: {details.restrictedHoliday.holidayName}
+                            </div>
+                          )}
                           <div className={clsx("px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center justify-between", details.firstHalf.color)}>
                             <span className="opacity-70 text-[9px] mr-1 uppercase">1st</span>
                             <span className="truncate">{details.firstHalf.label}</span>
