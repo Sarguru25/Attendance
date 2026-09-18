@@ -229,6 +229,13 @@ export async function POST(req: NextRequest) {
           attendance.unpaidLeaveDays = calc.unpaidLeaveDays;
           attendance.lateMinutes = calc.lateMinutes;
 
+          attendance.scheduledMinutes = calc.scheduledMinutes;
+          attendance.workedMinutes = calc.workedMinutes;
+          attendance.totalExtraMinutes = calc.totalExtraMinutes;
+          attendance.availableExtraMinutes = calc.availableExtraMinutes;
+          attendance.extraBeforeShiftMinutes = calc.extraBeforeShiftMinutes;
+          attendance.extraAfterShiftMinutes = calc.extraAfterShiftMinutes;
+
           await attendance.save({ bypassTenant: true } as any);
 
           // Handle Comp-Off logic for Miss Punch / Correction approval

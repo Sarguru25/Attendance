@@ -184,7 +184,26 @@ export function calculateDailyAttendance({
           const [coH, coM] = coIstStr.split(':').map(Number);
           const [shH, shM] = boundaries.secondHalf.start.split(':').map(Number);
           if ((coH * 60 + coM) >= (shH * 60 + shM)) {
-            secondHalf.checkIn = sorted[0].checkIn || secondHalf.checkIn;
+            const dObj = new Date(sorted[0].checkIn || sorted[0].checkOut || date);
+            const istDateStr = dObj.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata' });
+            const [mStr, dayStr, yStr] = istDateStr.split('/');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr);
+            const d = parseInt(dayStr);
+            const [fhEndH, fhEndM] = boundaries.firstHalf.end.split(':').map(Number);
+            const [shStartH, shStartM] = boundaries.secondHalf.start.split(':').map(Number);
+
+            const fhEndDate = new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(fhEndH).padStart(2, '0')}:${String(fhEndM).padStart(2, '0')}:00+05:30`);
+            const shStartDate = new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(shStartH).padStart(2, '0')}:${String(shStartM).padStart(2, '0')}:00+05:30`);
+
+            firstHalf.checkIn = sorted[0].checkIn || firstHalf.checkIn;
+            firstHalf.checkOut = fhEndDate;
+            if (firstHalf.status !== 'leave') {
+              firstHalf.status = sorted[0].lateMinutes > 0 ? 'late' : 'present';
+              firstHalf.lateMinutes = sorted[0].lateMinutes || 0;
+            }
+
+            secondHalf.checkIn = shStartDate;
             secondHalf.checkOut = sorted[0].checkOut || secondHalf.checkOut;
             if (secondHalf.status !== 'leave') {
               secondHalf.status = 'present';
@@ -207,7 +226,20 @@ export function calculateDailyAttendance({
           const [coH, coM] = coIstStr.split(':').map(Number);
           const [shH, shM] = boundaries.secondHalf.start.split(':').map(Number);
           if ((coH * 60 + coM) >= (shH * 60 + shM)) {
-            secondHalf.checkIn = existingAttendance.loginTime;
+            const dObj = new Date(existingAttendance.loginTime || existingAttendance.logoutTime || date);
+            const istDateStr = dObj.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata' });
+            const [mStr, dayStr, yStr] = istDateStr.split('/');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr);
+            const d = parseInt(dayStr);
+            const [fhEndH, fhEndM] = boundaries.firstHalf.end.split(':').map(Number);
+            const [shStartH, shStartM] = boundaries.secondHalf.start.split(':').map(Number);
+
+            const fhEndDate = new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(fhEndH).padStart(2, '0')}:${String(fhEndM).padStart(2, '0')}:00+05:30`);
+            const shStartDate = new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(shStartH).padStart(2, '0')}:${String(shStartM).padStart(2, '0')}:00+05:30`);
+
+            firstHalf.checkOut = fhEndDate;
+            secondHalf.checkIn = shStartDate;
             secondHalf.checkOut = existingAttendance.logoutTime;
             if (secondHalf.status !== 'leave') {
               secondHalf.status = 'present';
@@ -245,7 +277,77 @@ export function calculateDailyAttendance({
     }
   }
 
-  const totalWorkedHours = (firstHalf.workedHours || 0) + (secondHalf.workedHours || 0);
+  let totalWorkedHours = 0;
+  if (existingAttendance?.sessions && existingAttendance.sessions.length > 1) {
+    let sessMinutes = 0;
+    existingAttendance.sessions.forEach((s: any) => {
+      if (s.checkIn && s.checkOut) {
+        sessMinutes += Math.max(0, (new Date(s.checkOut).getTime() - new Date(s.checkIn).getTime()) / (1000 * 60));
+      }
+    });
+    totalWorkedHours = sessMinutes / 60;
+  } else if (existingAttendance?.loginTime && existingAttendance?.logoutTime) {
+    totalWorkedHours = Math.max(0, (new Date(existingAttendance.logoutTime).getTime() - new Date(existingAttendance.loginTime).getTime()) / (1000 * 60 * 60));
+  } else if (existingAttendance?.sessions && existingAttendance.sessions.length === 1 && existingAttendance.sessions[0].checkIn && existingAttendance.sessions[0].checkOut) {
+    totalWorkedHours = Math.max(0, (new Date(existingAttendance.sessions[0].checkOut).getTime() - new Date(existingAttendance.sessions[0].checkIn).getTime()) / (1000 * 60 * 60));
+  } else {
+    totalWorkedHours = (firstHalf.workedHours || 0) + (secondHalf.workedHours || 0);
+  }
+
+  let scheduledMinutes = 0;
+  if (shift?.sessions && Array.isArray(shift.sessions) && shift.sessions.length > 0) {
+    shift.sessions.forEach((s: any) => {
+      const [sh, sm] = s.startTime.split(':').map(Number);
+      const [eh, em] = s.endTime.split(':').map(Number);
+      let dur = (eh * 60 + em) - (sh * 60 + sm);
+      if (dur < 0) dur += 24 * 60;
+      scheduledMinutes += dur;
+    });
+  } else if (shift?.startTime && shift?.endTime) {
+    const [sh, sm] = shift.startTime.split(':').map(Number);
+    const [eh, em] = shift.endTime.split(':').map(Number);
+    let dur = (eh * 60 + em) - (sh * 60 + sm);
+    if (dur < 0) dur += 24 * 60;
+    scheduledMinutes += dur;
+  }
+
+  const workedMinutes = Math.round(totalWorkedHours * 60);
+  let totalExtraMinutes = 0;
+  if (scheduledMinutes > 0 && workedMinutes > scheduledMinutes) {
+    totalExtraMinutes = workedMinutes - scheduledMinutes;
+  }
+
+  const shiftStartTimeStr = shift?.startTime || shift?.sessions?.[0]?.startTime || '09:00';
+  const shiftEndTimeStr = shift?.endTime || shift?.sessions?.[shift?.sessions?.length - 1]?.endTime || '18:00';
+
+  const [stH, stM] = shiftStartTimeStr.split(':').map(Number);
+  const [etH, etM] = shiftEndTimeStr.split(':').map(Number);
+
+  const dObj = new Date(date || existingAttendance?.date || new Date());
+  const istDateStr = dObj.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata' });
+  const [mStr, dayStr, yStr] = istDateStr.split('/');
+  const y = parseInt(yStr);
+  const m = parseInt(mStr);
+  const d = parseInt(dayStr);
+
+  const shiftStart = new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(stH).padStart(2, '0')}:${String(stM).padStart(2, '0')}:00+05:30`);
+  const shiftEnd = new Date(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(etH).padStart(2, '0')}:${String(etM).padStart(2, '0')}:00+05:30`);
+
+  let extraBeforeShiftMinutes = 0;
+  let extraAfterShiftMinutes = 0;
+  const inTime = existingAttendance?.loginTime || existingAttendance?.sessions?.[0]?.checkIn || firstHalf.checkIn;
+  const outTime = existingAttendance?.logoutTime || existingAttendance?.sessions?.[existingAttendance?.sessions?.length - 1]?.checkOut || secondHalf.checkOut;
+
+  if (inTime && new Date(inTime) < shiftStart) {
+    extraBeforeShiftMinutes = Math.max(0, Math.round((shiftStart.getTime() - new Date(inTime).getTime()) / (1000 * 60)));
+  }
+  if (outTime && new Date(outTime) > shiftEnd) {
+    extraAfterShiftMinutes = Math.max(0, Math.round((new Date(outTime).getTime() - shiftEnd.getTime()) / (1000 * 60)));
+  }
+
+  const previouslyUsed = (existingAttendance?.totalExtraMinutes || 0) - (existingAttendance?.availableExtraMinutes || 0);
+  const newlyUsed = isNaN(previouslyUsed) || previouslyUsed < 0 ? 0 : previouslyUsed;
+  const availableExtraMinutes = Math.max(0, totalExtraMinutes - newlyUsed);
 
   let paidLeaveDays = 0;
   let unpaidLeaveDays = 0;
@@ -301,7 +403,13 @@ export function calculateDailyAttendance({
     permissionMinutes: totalPermissionMinutes,
     permissionStart: primaryStart,
     permissionEnd: primaryEnd,
-    effectiveCheckInStart
+    effectiveCheckInStart,
+    scheduledMinutes,
+    workedMinutes,
+    totalExtraMinutes,
+    availableExtraMinutes,
+    extraBeforeShiftMinutes,
+    extraAfterShiftMinutes
   };
 }
 

@@ -250,6 +250,13 @@ export async function recalculateAttendanceForUserAndDate(userId: any, date: Dat
   attendance.unpaidLeaveDays = calc.unpaidLeaveDays;
   attendance.lateMinutes = calc.lateMinutes;
 
+  attendance.scheduledMinutes = calc.scheduledMinutes;
+  attendance.workedMinutes = calc.workedMinutes;
+  attendance.totalExtraMinutes = calc.totalExtraMinutes;
+  attendance.availableExtraMinutes = calc.availableExtraMinutes;
+  attendance.extraBeforeShiftMinutes = calc.extraBeforeShiftMinutes;
+  attendance.extraAfterShiftMinutes = calc.extraAfterShiftMinutes;
+
   attendance.permissionMinutes = calc.permissionMinutes;
   attendance.permissionStart = calc.permissionStart;
   attendance.permissionEnd = calc.permissionEnd;

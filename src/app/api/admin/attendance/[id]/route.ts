@@ -24,9 +24,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (status === 'none' || status === 'clear') {
       const attendanceDate = attendance.date;
       const userId = attendance.userId;
-      
+
       await Attendance.findByIdAndDelete(id);
-      
+
       const CompOffCredit = (await import('@/models/CompOffCredit')).default;
       await CompOffCredit.findOneAndDelete({ employeeId: userId, attendanceDate });
 
