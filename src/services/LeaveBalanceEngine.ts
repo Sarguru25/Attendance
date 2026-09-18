@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import CompOffCredit from '@/models/CompOffCredit';
@@ -76,16 +77,60 @@ export class LeaveBalanceEngine {
     }
 
     // Recalculate CompOff available from CompOffCredit model
+    if (!user.leaveBalance.compensatoryOff) {
+      user.leaveBalance.compensatoryOff = { total: 0, available: 0, taken: 0, earned: 0 };
+      needsUpdate = true;
+    }
+
+    const employeeObjId = mongoose.Types.ObjectId.isValid(employeeId)
+      ? new mongoose.Types.ObjectId(employeeId)
+      : employeeId;
+
     const compOffs = await CompOffCredit.find({
-      employeeId,
+      $or: [
+        { employeeId: employeeObjId },
+        { employeeId: employeeId.toString() }
+      ],
       isUsed: false,
     }, null, { bypassTenant: true });
+
     const earned = compOffs.length;
-    if (user.leaveBalance.compensatoryOff.available !== earned) {
+    const currentAvailable = user.leaveBalance.compensatoryOff.available || 0;
+
+    if (earned > currentAvailable) {
+      // New credits were earned from attendance/approved requests
       user.leaveBalance.compensatoryOff.available = earned;
-      user.leaveBalance.compensatoryOff.total = earned + user.leaveBalance.compensatoryOff.taken;
-      user.leaveBalance.compensatoryOff.earned = earned + user.leaveBalance.compensatoryOff.taken;
+      user.leaveBalance.compensatoryOff.total = earned + (user.leaveBalance.compensatoryOff.taken || 0);
+      user.leaveBalance.compensatoryOff.earned = user.leaveBalance.compensatoryOff.total;
       needsUpdate = true;
+    } else if (currentAvailable > earned) {
+      // User has manual available balance that wasn't backed by CompOffCredit records.
+      // Backfill missing CompOffCredit records so balance is not lost upon sync/refresh.
+      const diff = currentAvailable - earned;
+      const now = new Date();
+      const backfill = [];
+      for (let i = 0; i < diff; i++) {
+        backfill.push({
+          employeeId: employeeObjId,
+          companyId: user.companyId || (user.companyIds && user.companyIds[0]) || undefined,
+          attendanceDate: now,
+          earnedDate: now,
+          availableFromDate: now,
+          isUsed: false,
+        });
+      }
+      await CompOffCredit.insertMany(backfill);
+      user.leaveBalance.compensatoryOff.total = currentAvailable + (user.leaveBalance.compensatoryOff.taken || 0);
+      user.leaveBalance.compensatoryOff.earned = user.leaveBalance.compensatoryOff.total;
+      needsUpdate = true;
+    } else {
+      // Ensure total and earned stay consistent with taken + available
+      const expectedTotal = currentAvailable + (user.leaveBalance.compensatoryOff.taken || 0);
+      if (user.leaveBalance.compensatoryOff.total !== expectedTotal) {
+        user.leaveBalance.compensatoryOff.total = expectedTotal;
+        user.leaveBalance.compensatoryOff.earned = expectedTotal;
+        needsUpdate = true;
+      }
     }
 
     if (needsUpdate) {

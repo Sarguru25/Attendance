@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import CompOffCredit from '@/models/CompOffCredit';
+import mongoose from 'mongoose';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -26,7 +28,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     await dbConnect();
 
-    const user = await User.findById(id);
+    const user = await User.findById(id, null, { bypassTenant: true });
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -41,6 +43,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         paternityLeave: { total: user.gender === 'male' ? 2 : 0, available: user.gender === 'male' ? 2 : 0, taken: 0 },
         leaveWithoutPay: { taken: 0 }
       };
+    }
+    if (!user.leaveBalance.compensatoryOff) {
+      user.leaveBalance.compensatoryOff = { total: 0, available: 0, taken: 0, earned: 0 };
     }
 
     // Casual Leave
@@ -74,10 +79,53 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     // Compensatory Off
-    if (compensatoryOff !== undefined) user.leaveBalance.compensatoryOff.available = Number(compensatoryOff);
-    if (compensatoryOffTaken !== undefined) user.leaveBalance.compensatoryOff.taken = Number(compensatoryOffTaken);
+    if (compensatoryOff !== undefined) {
+      const targetAvailable = Math.max(0, Number(compensatoryOff));
+      user.leaveBalance.compensatoryOff.available = targetAvailable;
+
+      // Sync CompOffCredit records so available credits match
+      const employeeObjId = mongoose.Types.ObjectId.isValid(user._id)
+        ? new mongoose.Types.ObjectId(user._id)
+        : user._id;
+
+      const existingCredits = await CompOffCredit.find({
+        $or: [
+          { employeeId: employeeObjId },
+          { employeeId: user._id.toString() }
+        ],
+        isUsed: false,
+      }, null, { bypassTenant: true }).sort({ earnedDate: 1 });
+
+      const currentCount = existingCredits.length;
+      const diff = targetAvailable - currentCount;
+
+      if (diff > 0) {
+        const now = new Date();
+        const newCredits = [];
+        for (let i = 0; i < diff; i++) {
+          newCredits.push({
+            employeeId: employeeObjId,
+            companyId: user.companyId || (user.companyIds && user.companyIds[0]) || undefined,
+            attendanceDate: now,
+            earnedDate: now,
+            availableFromDate: now,
+            isUsed: false,
+          });
+        }
+        await CompOffCredit.insertMany(newCredits);
+      } else if (diff < 0) {
+        const toRemove = existingCredits.slice(0, Math.abs(diff));
+        const idsToRemove = toRemove.map((c: any) => c._id);
+        await CompOffCredit.deleteMany({ _id: { $in: idsToRemove } });
+      }
+    }
+
+    if (compensatoryOffTaken !== undefined) {
+      user.leaveBalance.compensatoryOff.taken = Number(compensatoryOffTaken);
+    }
     if (user.leaveBalance.compensatoryOff) {
       user.leaveBalance.compensatoryOff.total = (user.leaveBalance.compensatoryOff.available || 0) + (user.leaveBalance.compensatoryOff.taken || 0);
+      user.leaveBalance.compensatoryOff.earned = user.leaveBalance.compensatoryOff.total;
     }
 
     // Leave Without Pay
@@ -89,7 +137,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     user.markModified('leaveBalance');
-    await user.save();
+    await user.save({ bypassTenant: true } as any);
 
     return NextResponse.json({ message: 'Leave balance updated successfully', leaveBalance: user.leaveBalance });
   } catch (error: any) {
