@@ -96,27 +96,43 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         isUsed: false,
       }, null, { bypassTenant: true }).sort({ earnedDate: 1 });
 
-      const currentCount = existingCredits.length;
-      const diff = targetAvailable - currentCount;
+      const currentCount = existingCredits.reduce((sum, c) => sum + (c.credits !== undefined ? c.credits : 1), 0);
+      const diff = Math.round((targetAvailable - currentCount) * 100) / 100;
 
       if (diff > 0) {
         const now = new Date();
         const newCredits = [];
-        for (let i = 0; i < diff; i++) {
+        let remaining = diff;
+        while (remaining > 0) {
+          const creditAmount = remaining >= 1 ? 1 : remaining;
           newCredits.push({
             employeeId: employeeObjId,
             companyId: user.companyId || (user.companyIds && user.companyIds[0]) || undefined,
             attendanceDate: now,
             earnedDate: now,
             availableFromDate: now,
+            credits: creditAmount,
             isUsed: false,
           });
+          remaining = Math.round((remaining - creditAmount) * 100) / 100;
         }
-        await CompOffCredit.insertMany(newCredits);
+        if (newCredits.length > 0) {
+          await CompOffCredit.insertMany(newCredits);
+        }
       } else if (diff < 0) {
-        const toRemove = existingCredits.slice(0, Math.abs(diff));
-        const idsToRemove = toRemove.map((c: any) => c._id);
-        await CompOffCredit.deleteMany({ _id: { $in: idsToRemove } });
+        let toDeduct = Math.abs(diff);
+        for (const credit of existingCredits) {
+          if (toDeduct <= 0) break;
+          const cVal = credit.credits !== undefined ? credit.credits : 1;
+          if (cVal <= toDeduct) {
+            toDeduct = Math.round((toDeduct - cVal) * 100) / 100;
+            await CompOffCredit.deleteOne({ _id: credit._id });
+          } else {
+            credit.credits = Math.round((cVal - toDeduct) * 100) / 100;
+            await credit.save({ bypassTenant: true } as any);
+            toDeduct = 0;
+          }
+        }
       }
     }
 

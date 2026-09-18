@@ -137,17 +137,41 @@ export async function POST(req: NextRequest) {
           } else if (request.leaveType === 'Compensatory Off') {
             const CompOffCredit = (await import('@/models/CompOffCredit')).default;
             const credits = await CompOffCredit.find({
-              employeeId: request.userId,
+              $or: [
+                { employeeId: request.userId },
+                { employeeId: request.userId.toString() }
+              ],
               isUsed: false
-            }, null, { bypassTenant: true }).sort({ earnedDate: 1 }).limit(request.numberOfDays);
+            }, null, { bypassTenant: true }).sort({ earnedDate: 1 });
 
+            let needed = request.numberOfDays;
             for (const credit of credits) {
-              credit.isUsed = true;
-              credit.usedAgainstLeave = request._id;
-              await credit.save({ bypassTenant: true } as any);
+              if (needed <= 0) break;
+              const cVal = credit.credits !== undefined ? credit.credits : 1;
+              if (cVal <= needed) {
+                credit.isUsed = true;
+                credit.usedAgainstLeave = request._id;
+                await credit.save({ bypassTenant: true } as any);
+                needed = Math.round((needed - cVal) * 100) / 100;
+              } else {
+                credit.credits = Math.round((cVal - needed) * 100) / 100;
+                await credit.save({ bypassTenant: true } as any);
+                await CompOffCredit.create({
+                  employeeId: credit.employeeId,
+                  companyId: credit.companyId,
+                  attendanceDate: credit.attendanceDate,
+                  earnedDate: credit.earnedDate,
+                  availableFromDate: credit.availableFromDate,
+                  expiryDate: credit.expiryDate,
+                  isUsed: true,
+                  credits: needed,
+                  usedAgainstLeave: request._id,
+                });
+                needed = 0;
+              }
             }
-            user.leaveBalance.compensatoryOff.taken += credits.length;
-            user.leaveBalance.compensatoryOff.available -= credits.length;
+            user.leaveBalance.compensatoryOff.taken = (user.leaveBalance.compensatoryOff.taken || 0) + request.numberOfDays;
+            user.leaveBalance.compensatoryOff.available = Math.max(0, (user.leaveBalance.compensatoryOff.available || 0) - request.numberOfDays);
           }
           user.markModified('leaveBalance');
           await user.save({ bypassTenant: true } as any);
@@ -227,7 +251,17 @@ export async function POST(req: NextRequest) {
 
           if (isWeeklyOff || isHoliday) {
             const CompOffCredit = (await import('@/models/CompOffCredit')).default;
-            const existingCredit = await CompOffCredit.findOne({ employeeId: attendance.userId, attendanceDate }, null, { bypassTenant: true });
+            const existingCredit = await CompOffCredit.findOne({
+              $or: [
+                { employeeId: attendance.userId },
+                { employeeId: attendance.userId.toString() }
+              ],
+              attendanceDate
+            }, null, { bypassTenant: true });
+
+            const isHalfDay = attendance.status === 'half-day';
+            const creditAmount = isHalfDay ? 0.5 : 1;
+
             if (!existingCredit) {
               const expiry = new Date(attendanceDate);
               expiry.setMonth(expiry.getMonth() + 3);
@@ -238,11 +272,19 @@ export async function POST(req: NextRequest) {
                 availableFromDate: new Date(),
                 expiryDate: expiry,
                 companyId: user?.companyId,
+                credits: creditAmount,
               });
 
               // Sync leave balance to reflect new comp-off
               const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
               await LeaveBalanceEngine.syncLeaveBalance(attendance.userId.toString());
+            } else {
+              if (existingCredit.credits !== creditAmount) {
+                existingCredit.credits = creditAmount;
+                await existingCredit.save({ bypassTenant: true } as any);
+                const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
+                await LeaveBalanceEngine.syncLeaveBalance(attendance.userId.toString());
+              }
             }
           }
         }

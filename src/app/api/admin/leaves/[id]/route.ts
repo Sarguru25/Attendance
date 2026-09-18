@@ -60,17 +60,41 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         } else if (leave.leaveType === 'Compensatory Off') {
           const CompOffCredit = (await import('@/models/CompOffCredit')).default;
           const credits = await CompOffCredit.find({
-            employeeId: leave.userId,
+            $or: [
+              { employeeId: leave.userId },
+              { employeeId: leave.userId.toString() }
+            ],
             isUsed: false
-          }).sort({ earnedDate: 1 }).limit(leave.numberOfDays);
+          }).sort({ earnedDate: 1 });
 
+          let needed = leave.numberOfDays;
           for (const credit of credits) {
-            credit.isUsed = true;
-            credit.usedAgainstLeave = leave._id;
-            await credit.save();
+            if (needed <= 0) break;
+            const cVal = credit.credits !== undefined ? credit.credits : 1;
+            if (cVal <= needed) {
+              credit.isUsed = true;
+              credit.usedAgainstLeave = leave._id;
+              await credit.save();
+              needed = Math.round((needed - cVal) * 100) / 100;
+            } else {
+              credit.credits = Math.round((cVal - needed) * 100) / 100;
+              await credit.save();
+              await CompOffCredit.create({
+                employeeId: credit.employeeId,
+                companyId: credit.companyId,
+                attendanceDate: credit.attendanceDate,
+                earnedDate: credit.earnedDate,
+                availableFromDate: credit.availableFromDate,
+                expiryDate: credit.expiryDate,
+                isUsed: true,
+                credits: needed,
+                usedAgainstLeave: leave._id,
+              });
+              needed = 0;
+            }
           }
-          user.leaveBalance.compensatoryOff.taken += credits.length;
-          user.leaveBalance.compensatoryOff.available -= credits.length;
+          user.leaveBalance.compensatoryOff.taken = (user.leaveBalance.compensatoryOff.taken || 0) + leave.numberOfDays;
+          user.leaveBalance.compensatoryOff.available = Math.max(0, (user.leaveBalance.compensatoryOff.available || 0) - leave.numberOfDays);
         }
         user.markModified('leaveBalance');
         await user.save();

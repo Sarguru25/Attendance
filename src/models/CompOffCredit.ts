@@ -8,6 +8,7 @@ export interface ICompOffCredit extends Document {
   availableFromDate: Date;
   expiryDate?: Date;
   isUsed: boolean;
+  credits?: number;
   usedAgainstLeave?: mongoose.Types.ObjectId;
 }
 
@@ -20,6 +21,7 @@ const CompOffCreditSchema: Schema = new Schema(
     availableFromDate: { type: Date, required: true },
     expiryDate: { type: Date },
     isUsed: { type: Boolean, default: false },
+    credits: { type: Number, default: 1 },
     usedAgainstLeave: { type: Schema.Types.ObjectId, ref: 'Leave' },
   },
   { timestamps: true }

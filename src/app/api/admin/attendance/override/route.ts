@@ -440,9 +440,19 @@ export async function POST(req: NextRequest) {
       }
 
       const CompOffCredit = (await import('@/models/CompOffCredit')).default;
+      const isPresentOrHalfDay = ['present', 'half-day', 'late'].includes(finalStatus) || ['present', 'half-day', 'late'].includes(status);
+      const isHalfDay = finalStatus === 'half-day' || status === 'half-day';
+      const creditAmount = isHalfDay ? 0.5 : 1;
+
       if (isWeeklyOff || !!holiday) {
-        if (['present', 'half-day', 'late'].includes(status)) {
-          const existingCredit = await CompOffCredit.findOne({ employeeId: userId, attendanceDate });
+        if (isPresentOrHalfDay) {
+          const existingCredit = await CompOffCredit.findOne({
+            $or: [
+              { employeeId: userId },
+              { employeeId: userId.toString() }
+            ],
+            attendanceDate
+          });
           if (!existingCredit) {
              const expiry = new Date(attendanceDate);
              expiry.setMonth(expiry.getMonth() + 3);
@@ -453,14 +463,32 @@ export async function POST(req: NextRequest) {
                availableFromDate: new Date(),
                expiryDate: expiry,
                companyId: user.companyId,
+               credits: creditAmount,
              });
+          } else {
+             existingCredit.credits = creditAmount;
+             await existingCredit.save();
           }
         } else {
-          await CompOffCredit.findOneAndDelete({ employeeId: userId, attendanceDate });
+          await CompOffCredit.findOneAndDelete({
+            $or: [
+              { employeeId: userId },
+              { employeeId: userId.toString() }
+            ],
+            attendanceDate
+          });
         }
       } else {
-        await CompOffCredit.findOneAndDelete({ employeeId: userId, attendanceDate });
+        await CompOffCredit.findOneAndDelete({
+          $or: [
+            { employeeId: userId },
+            { employeeId: userId.toString() }
+          ],
+          attendanceDate
+        });
       }
+
+      await LeaveBalanceEngine.syncLeaveBalance(userId.toString());
 
       return NextResponse.json({ message: 'Attendance overridden successfully', attendance });
     }

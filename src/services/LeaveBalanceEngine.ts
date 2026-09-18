@@ -94,33 +94,37 @@ export class LeaveBalanceEngine {
       isUsed: false,
     }, null, { bypassTenant: true });
 
-    const earned = compOffs.length;
+    const earned = compOffs.reduce((sum, c) => sum + (c.credits !== undefined ? c.credits : 1), 0);
     const currentAvailable = user.leaveBalance.compensatoryOff.available || 0;
 
-    if (earned > currentAvailable) {
-      // New credits were earned from attendance/approved requests
-      user.leaveBalance.compensatoryOff.available = earned;
-      user.leaveBalance.compensatoryOff.total = earned + (user.leaveBalance.compensatoryOff.taken || 0);
-      user.leaveBalance.compensatoryOff.earned = user.leaveBalance.compensatoryOff.total;
-      needsUpdate = true;
-    } else if (currentAvailable > earned) {
-      // User has manual available balance that wasn't backed by CompOffCredit records.
-      // Backfill missing CompOffCredit records so balance is not lost upon sync/refresh.
-      const diff = currentAvailable - earned;
+    if (compOffs.length === 0 && currentAvailable > 0) {
+      // Legacy user has available balance but no CompOffCredit records existed yet.
+      // Backfill once so their legacy balance isn't lost.
+      let remaining = Math.round(currentAvailable * 100) / 100;
       const now = new Date();
       const backfill = [];
-      for (let i = 0; i < diff; i++) {
+      while (remaining > 0) {
+        const creditAmount = remaining >= 1 ? 1 : remaining;
         backfill.push({
           employeeId: employeeObjId,
           companyId: user.companyId || (user.companyIds && user.companyIds[0]) || undefined,
           attendanceDate: now,
           earnedDate: now,
           availableFromDate: now,
+          credits: creditAmount,
           isUsed: false,
         });
+        remaining = Math.round((remaining - creditAmount) * 100) / 100;
       }
-      await CompOffCredit.insertMany(backfill);
+      if (backfill.length > 0) {
+        await CompOffCredit.insertMany(backfill);
+      }
       user.leaveBalance.compensatoryOff.total = currentAvailable + (user.leaveBalance.compensatoryOff.taken || 0);
+      user.leaveBalance.compensatoryOff.earned = user.leaveBalance.compensatoryOff.total;
+      needsUpdate = true;
+    } else if (user.leaveBalance.compensatoryOff.available !== earned) {
+      user.leaveBalance.compensatoryOff.available = earned;
+      user.leaveBalance.compensatoryOff.total = earned + (user.leaveBalance.compensatoryOff.taken || 0);
       user.leaveBalance.compensatoryOff.earned = user.leaveBalance.compensatoryOff.total;
       needsUpdate = true;
     } else {
