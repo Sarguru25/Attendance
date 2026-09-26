@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       Leave.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'userId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
       MissPunch.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
-      AttendanceCorrection.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      AttendanceCorrection.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).populate({ path: 'attendanceId', select: 'date status loginTime logoutTime', options: { bypassTenant: true } }).lean(),
       OvertimeRequest.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
       WFHRequest.find({ status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
       Permission.find({ status: 'Pending Approval' }, null, { bypassTenant: true }).populate({ path: 'userId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),

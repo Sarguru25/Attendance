@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       Leave.find({ currentApprover: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'userId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
       MissPunch.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
-      AttendanceCorrection.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
+      AttendanceCorrection.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).populate({ path: 'attendanceId', select: 'date status loginTime logoutTime', options: { bypassTenant: true } }).lean(),
       OvertimeRequest.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
       WFHRequest.find({ approverId: userId, status: 'pending' }, null, { bypassTenant: true }).populate({ path: 'employeeId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
       Permission.find({ currentApprover: userId, status: 'Pending Approval' }, null, { bypassTenant: true }).populate({ path: 'userId', select: 'name employeeId', options: { bypassTenant: true } }).lean(),
@@ -44,6 +44,12 @@ export async function GET(req: NextRequest) {
       ...wfhs.map(w => ({ ...w, _id: w._id?.toString(), requestType: 'WFH', employee: w.employeeId })),
       ...permissions.map(p => ({ ...p, _id: p._id?.toString(), requestType: 'PERMISSION', employee: p.userId })),
     ];
+
+    approvals.sort((a, b) => {
+      const dateA = (a as any).createdAt ? new Date((a as any).createdAt).getTime() : 0;
+      const dateB = (b as any).createdAt ? new Date((b as any).createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
 
     return NextResponse.json({ approvals });
   } catch (error: any) {

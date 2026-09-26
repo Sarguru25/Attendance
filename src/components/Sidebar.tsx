@@ -4,13 +4,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, 
-  Users, 
-  CalendarClock, 
-  CalendarOff, 
-  Banknote, 
-  FileBarChart, 
+import {
+  LayoutDashboard,
+  Users,
+  CalendarClock,
+  CalendarOff,
+  Banknote,
+  FileBarChart,
   Settings,
   User as UserIcon,
   LogOut,
@@ -96,7 +96,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
         <span className="text-xl font-bold text-primary flex-1 text-center lg:text-left">
           HRMS Portal
         </span>
-        <button 
+        <button
           onClick={onClose}
           className="lg:hidden p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
         >

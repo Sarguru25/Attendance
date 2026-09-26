@@ -183,7 +183,10 @@ export function calculateDailyAttendance({
           const coIstStr = checkOutDate.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
           const [coH, coM] = coIstStr.split(':').map(Number);
           const [shH, shM] = boundaries.secondHalf.start.split(':').map(Number);
-          if ((coH * 60 + coM) >= (shH * 60 + shM)) {
+          const coMinutes = coH * 60 + coM;
+          const shStartMinutes = shH * 60 + shM;
+
+          if (coMinutes >= (shStartMinutes + 60)) {
             const dObj = new Date(sorted[0].checkIn || sorted[0].checkOut || date);
             const istDateStr = dObj.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata' });
             const [mStr, dayStr, yStr] = istDateStr.split('/');
@@ -225,7 +228,10 @@ export function calculateDailyAttendance({
           const coIstStr = checkOutDate.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
           const [coH, coM] = coIstStr.split(':').map(Number);
           const [shH, shM] = boundaries.secondHalf.start.split(':').map(Number);
-          if ((coH * 60 + coM) >= (shH * 60 + shM)) {
+          const coMinutes = coH * 60 + coM;
+          const shStartMinutes = shH * 60 + shM;
+
+          if (coMinutes >= (shStartMinutes + 60)) {
             const dObj = new Date(existingAttendance.loginTime || existingAttendance.logoutTime || date);
             const istDateStr = dObj.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata' });
             const [mStr, dayStr, yStr] = istDateStr.split('/');
@@ -377,11 +383,18 @@ export function calculateDailyAttendance({
   } else if (firstHalf.status === 'leave' && secondHalf.status === 'leave') {
     finalStatus = 'Leave';
   } else if ((firstHalf.status === 'present' || firstHalf.status === 'late') && (secondHalf.status === 'present' || secondHalf.status === 'late')) {
-    finalStatus = (firstHalf.status === 'late' || secondHalf.status === 'late') ? 'late' : 'present';
+    if (totalWorkedHours > 0 && totalWorkedHours < 5) {
+      finalStatus = 'half-day';
+    } else {
+      finalStatus = (firstHalf.status === 'late' || secondHalf.status === 'late') ? 'late' : 'present';
+    }
   } else if (firstHalf.status === 'leave' || secondHalf.status === 'leave') {
     finalStatus = 'half-day';
   } else if (firstHalf.status === 'present' || firstHalf.status === 'late' || secondHalf.status === 'present' || secondHalf.status === 'late') {
-    if (existingAttendance?.status === 'present' || existingAttendance?.status === 'late') {
+    const isCheckedOut = !!(existingAttendance?.logoutTime || (firstHalf.checkOut && !secondHalf.checkIn) || (secondHalf.checkOut && !firstHalf.checkIn));
+    if (isCheckedOut || (totalWorkedHours > 0 && totalWorkedHours < 6)) {
+      finalStatus = 'half-day';
+    } else if (existingAttendance?.status === 'present' || existingAttendance?.status === 'late') {
       finalStatus = existingAttendance.status;
     } else {
       finalStatus = 'half-day';

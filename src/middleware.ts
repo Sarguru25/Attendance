@@ -57,7 +57,7 @@ export default auth((req) => {
   //   return Response.redirect(new URL('/unauthorized', nextUrl));
   // }
 
-    if (user?.role === 'admin' && nextUrl.pathname.startsWith('/admin/payroll')) {
+  if (user?.role === 'admin' && nextUrl.pathname.startsWith('/admin/payroll')) {
     return Response.redirect(new URL('/unauthorized', nextUrl));
   }
 

@@ -188,17 +188,43 @@ export async function POST(req: NextRequest) {
           if (!attendance) {
             attendance = new Attendance({
               userId: request.employeeId,
-              date: request.date,
+              date: startOfDay,
               status: 'present'
             });
           }
         } else if (requestType === 'ATTENDANCE_CORRECTION') {
-          attendance = await Attendance.findById(request.attendanceId, null, { bypassTenant: true });
+          if (request.attendanceId) {
+            attendance = await Attendance.findById(request.attendanceId, null, { bypassTenant: true });
+          }
+          if (!attendance && (request.requestedCheckIn || request.date)) {
+            const d = new Date(request.date || request.requestedCheckIn);
+            const startOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+            const endOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+            attendance = await Attendance.findOne({ userId: request.employeeId, date: { $gte: startOfDay, $lte: endOfDay } }, null, { bypassTenant: true });
+          }
+          if (!attendance) {
+            const d = new Date(request.date || request.requestedCheckIn || new Date());
+            const startOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+            attendance = new Attendance({
+              userId: request.employeeId,
+              date: startOfDay,
+              status: 'present'
+            });
+          }
         }
 
         if (attendance) {
           if (request.requestedCheckIn) attendance.loginTime = request.requestedCheckIn;
           if (request.requestedCheckOut) attendance.logoutTime = request.requestedCheckOut;
+          if (attendance.sessions && attendance.sessions.length > 0) {
+            attendance.sessions = [{
+              sessionOrder: 1,
+              checkIn: attendance.loginTime,
+              checkOut: attendance.logoutTime,
+              lateMinutes: 0,
+              status: attendance.logoutTime ? 'Completed' : 'Pending'
+            } as any];
+          }
 
           const user = await User.findById(attendance.userId, null, { bypassTenant: true }).populate({ path: 'shiftId', options: { bypassTenant: true } });
           const Leave = (await import('@/models/Leave')).default;
@@ -240,18 +266,15 @@ export async function POST(req: NextRequest) {
 
           // Handle Comp-Off logic for Miss Punch / Correction approval
           const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-          const dayName = dayNames[attendanceDate.getDay()];
+          const dayName = dayNames[attendanceDate.getUTCDay()];
           const shift = user?.shiftId as any;
-          const isWeeklyOff = shift && (!shift.workingDays || !shift.workingDays.includes(dayName));
+          const isWeeklyOff = shift && Array.isArray(shift.workingDays) && shift.workingDays.length > 0
+            ? !shift.workingDays.map((d: string) => d.toLowerCase()).includes(dayName.toLowerCase())
+            : attendanceDate.getUTCDay() === 0;
 
           const Holiday = (await import('@/models/Holiday')).default;
-          const startOfAttendanceDay = new Date(attendanceDate);
-          startOfAttendanceDay.setHours(0, 0, 0, 0);
-          const endOfAttendanceDay = new Date(attendanceDate);
-          endOfAttendanceDay.setHours(23, 59, 59, 999);
-
           const holiday = await Holiday.findOne({
-            date: { $gte: startOfAttendanceDay, $lte: endOfAttendanceDay },
+            date: { $gte: startOfDay, $lte: endOfDay },
             holidayType: { $in: ['public', 'company'] }
           }, null, { bypassTenant: true });
           const isHoliday = !!holiday;
@@ -263,10 +286,19 @@ export async function POST(req: NextRequest) {
                 { employeeId: attendance.userId },
                 { employeeId: attendance.userId.toString() }
               ],
-              attendanceDate
+              attendanceDate: { $gte: startOfDay, $lte: endOfDay }
             }, null, { bypassTenant: true });
 
-            const isHalfDay = attendance.status === 'half-day';
+            const isHalfDay = attendance.status === 'half-day'
+              || (attendance.totalHours !== undefined && attendance.totalHours > 0 && attendance.totalHours < 6)
+              || (calc.totalWorkedHours !== undefined && calc.totalWorkedHours > 0 && calc.totalWorkedHours < 6)
+              || (!attendance.secondHalf?.checkOut || !attendance.firstHalf?.checkOut);
+
+            if (isHalfDay && attendance.status !== 'half-day') {
+              attendance.status = 'half-day';
+              await attendance.save({ bypassTenant: true } as any);
+            }
+
             const creditAmount = isHalfDay ? 0.5 : 1;
 
             if (!existingCredit) {
@@ -274,7 +306,7 @@ export async function POST(req: NextRequest) {
               expiry.setMonth(expiry.getMonth() + 3);
               await CompOffCredit.create({
                 employeeId: attendance.userId,
-                attendanceDate,
+                attendanceDate: startOfDay,
                 earnedDate: new Date(),
                 availableFromDate: new Date(),
                 expiryDate: expiry,

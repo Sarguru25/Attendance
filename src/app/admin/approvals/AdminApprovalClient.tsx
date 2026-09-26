@@ -103,7 +103,7 @@ export default function AdminApprovalClient() {
         return (
           <>
             <p className="text-sm font-bold text-card-foreground">{isMissPunch ? `Type: ${req.subType}` : 'Requested Correction'}</p>
-            <p className="text-sm font-bold text-muted-foreground mb-2">Date: {format(new Date(req.date || req.currentCheckIn || new Date()), 'MMM dd, yyyy')}</p>
+            <p className="text-sm font-bold text-muted-foreground mb-2">Date: {format(new Date(req.date || req.attendanceId?.date || req.currentCheckIn || req.requestedCheckIn || new Date()), 'MMM dd, yyyy')}</p>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-2 bg-muted/30 p-3 rounded-xl border border-border w-full sm:w-fit">
               <div className="flex-1">
                 <label className="block text-xs font-bold text-muted-foreground mb-1">Check In</label>
@@ -193,7 +193,7 @@ export default function AdminApprovalClient() {
                 
                 <div className="flex w-full sm:w-auto items-center gap-2 mt-4 sm:mt-0">
                   <button
-                    onClick={() => handleAction(req._id, req.requestType, 'approved', req.date || req.currentCheckIn || req.requestedCheckIn)}
+                    onClick={() => handleAction(req._id, req.requestType, 'approved', req.date || req.attendanceId?.date || req.currentCheckIn || req.requestedCheckIn)}
                     disabled={acting === req._id}
                     className="flex-1 sm:flex-none justify-center px-4 py-2 bg-success/10 text-success hover:bg-success/20 border border-success/20 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50 text-sm font-bold min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                   >

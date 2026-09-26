@@ -72,9 +72,9 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'No check-in recorded for this session.' }, { status: 400 });
     }
 
-    // If employee checked in during first half and checks out at or after second half start time (full day work),
+    // If employee checked in during first half and checks out at least 60 mins into second half (full day work),
     // and has no approved second-half leave, auto-complete secondHalf as present as well!
-    if (targetHalf === 'firstHalf' && curTotalMins >= shStartMins && !approvedLeave && attendance.secondHalf?.status !== 'leave') {
+    if (targetHalf === 'firstHalf' && curTotalMins >= (shStartMins + 60) && !approvedLeave && attendance.secondHalf?.status !== 'leave') {
       const [fhEndH, fhEndM] = boundaries.firstHalf.end.split(':').map(Number);
       const fhEndDate = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${String(fhEndH).padStart(2, '0')}:${String(fhEndM).padStart(2, '0')}:00+05:30`);
       const shStartDate = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${String(shStartH).padStart(2, '0')}:${String(shStartM).padStart(2, '0')}:00+05:30`);
@@ -182,18 +182,21 @@ export async function POST(req: NextRequest) {
     attendance.totalExtraMinutes = totalExtra;
     attendance.availableExtraMinutes = Math.max(0, totalExtra - newlyUsed);
 
-    if (approvedLeave || attendance.firstHalf?.status === 'leave' || attendance.secondHalf?.status === 'leave') {
+    const isHalfDay = approvedLeave || attendance.firstHalf?.status === 'leave' || attendance.secondHalf?.status === 'leave'
+      || !attendance.firstHalf?.checkOut || !attendance.secondHalf?.checkOut || (totalHours !== undefined && totalHours < 6);
+
+    if (isHalfDay) {
       attendance.status = 'half-day';
-    } else if (attendance.firstHalf?.checkOut && attendance.secondHalf?.checkOut) {
-      attendance.status = (attendance.firstHalf?.status === 'late' || attendance.secondHalf?.status === 'late') ? 'late' : 'present';
     } else {
-      attendance.status = 'half-day';
+      attendance.status = (attendance.firstHalf?.status === 'late' || attendance.secondHalf?.status === 'late') ? 'late' : 'present';
     }
 
-    // Comp-off logic on full day checkout
+    // Comp-off logic on checkout on weekly off / holiday
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dayName = dayNames[now.getDay()];
-    const isWeeklyOff = shift && Array.isArray(shift.workingDays) && !shift.workingDays.includes(dayName);
+    const isWeeklyOff = shift && Array.isArray(shift.workingDays) && shift.workingDays.length > 0
+      ? !shift.workingDays.map((d: string) => d.toLowerCase()).includes(dayName.toLowerCase())
+      : now.getDay() === 0;
 
     const Holiday = (await import('@/models/Holiday')).default;
     const isHoliday = await Holiday.exists({
@@ -201,7 +204,8 @@ export async function POST(req: NextRequest) {
       holidayType: { $in: ['public', 'company'] }
     });
 
-    if ((isWeeklyOff || isHoliday) && attendance.firstHalf?.checkOut && attendance.secondHalf?.checkOut) {
+    if (isWeeklyOff || isHoliday) {
+      const creditAmount = isHalfDay ? 0.5 : 1;
       const CompOffCredit = (await import('@/models/CompOffCredit')).default;
       const existingCredit = await CompOffCredit.findOne({ employeeId: userId, attendanceDate: { $gte: todayStart, $lte: todayEnd } });
 
@@ -216,16 +220,27 @@ export async function POST(req: NextRequest) {
           availableFromDate: now,
           expiryDate: expiry,
           companyId: user.companyId,
+          credits: creditAmount,
         });
+
+        const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
+        await LeaveBalanceEngine.syncLeaveBalance(userId.toString());
 
         const Notification = (await import('@/models/Notification')).default;
         await Notification.create({
           recipientId: userId,
           type: 'COMP_OFF_EARNED',
-          message: 'You have earned 1 Compensatory Off for working on a holiday/Weekly Off.',
+          message: `You have earned ${creditAmount} Compensatory Off for working on a holiday/Weekly Off.`,
           link: '/employee/leaves',
           companyId: user.companyId,
         });
+      } else {
+        if (existingCredit.credits !== creditAmount) {
+          existingCredit.credits = creditAmount;
+          await existingCredit.save();
+          const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
+          await LeaveBalanceEngine.syncLeaveBalance(userId.toString());
+        }
       }
     }
 

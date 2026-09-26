@@ -52,7 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }, null, { bypassTenant: true }).sort({ date: -1 }).lean();
 
     let present = 0, absent = 0, late = 0, halfDay = 0, leaveCount = 0;
-    
+
     attendances.forEach(a => {
       if (a.status === 'present') present++;
       if (a.status === 'late') late++;
