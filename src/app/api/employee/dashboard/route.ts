@@ -130,12 +130,25 @@ export async function GET() {
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
 
-    const todayLeave = await Leave.findOne({
+    const todayLeaves = await Leave.find({
       userId: session.user.id,
       status: 'approved',
       fromDate: { $lte: todayEnd },
       toDate: { $gte: todayStart }
     });
+
+    const hasFullDay = todayLeaves.some(l => l.duration !== 'half_day');
+    const hasFirstHalf = todayLeaves.some(l => l.duration === 'half_day' && l.halfDaySession === 'first_half');
+    const hasSecondHalf = todayLeaves.some(l => l.duration === 'half_day' && l.halfDaySession === 'second_half');
+
+    let todayLeave: any = null;
+    if (hasFullDay || (hasFirstHalf && hasSecondHalf)) {
+      todayLeave = { duration: 'full_day' };
+    } else if (hasFirstHalf) {
+      todayLeave = todayLeaves.find(l => l.duration === 'half_day' && l.halfDaySession === 'first_half');
+    } else if (hasSecondHalf) {
+      todayLeave = todayLeaves.find(l => l.duration === 'half_day' && l.halfDaySession === 'second_half');
+    }
 
     if (shift && shift.sessions) {
       activeSessionInfo = getActiveSessionInfo(shift.sessions, todayAttendance?.sessions || [], currentIstTime, todayLeave, shift);

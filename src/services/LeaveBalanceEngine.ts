@@ -145,27 +145,50 @@ export class LeaveBalanceEngine {
     return user.leaveBalance;
   }
 
-  static async checkEligibility(employeeId: string, leaveType: string, numberOfDays: number): Promise<{ eligible: boolean, reason?: string, requiresDocument?: boolean }> {
+  static async checkEligibility(employeeId: string, leaveType: string, numberOfDays: number, includePending: boolean = true): Promise<{ eligible: boolean, reason?: string, requiresDocument?: boolean }> {
     const balance = await this.syncLeaveBalance(employeeId);
+
+    let pendingDays = 0;
+    if (includePending) {
+      const Leave = (await import('@/models/Leave')).default;
+      const pendingLeaves = await Leave.find({
+        userId: employeeId,
+        leaveType,
+        status: 'pending'
+      }, null, { bypassTenant: true });
+      pendingDays = pendingLeaves.reduce((sum: number, l: any) => sum + (l.numberOfDays || 0), 0);
+    }
 
     if (leaveType === 'Casual Leave') {
       if (balance.casualLeave.total === 0) {
         return { eligible: false, reason: 'You must complete 6 months of service to be eligible for Casual Leave.' };
       }
-      if (balance.casualLeave.available < numberOfDays) {
-        return { eligible: false, reason: `Insufficient Casual Leave balance. You have ${balance.casualLeave.available} days left.` };
+      const available = Math.max(0, (balance.casualLeave.available || 0) - pendingDays);
+      if (available < numberOfDays) {
+        return {
+          eligible: false,
+          reason: pendingDays > 0
+            ? `Insufficient Casual Leave balance. You have ${balance.casualLeave.available} days left (${pendingDays} day(s) pending approval).`
+            : `Insufficient Casual Leave balance. You have ${balance.casualLeave.available} days left.`
+        };
       }
       return { eligible: true };
     }
 
     if (leaveType === 'Sick Leave') {
-      if (balance.sickLeave.available < numberOfDays) {
-         return { eligible: false, reason: `Insufficient Sick Leave balance. You have ${balance.sickLeave.available} days left.` };
+      const available = Math.max(0, (balance.sickLeave.available || 0) - pendingDays);
+      if (available < numberOfDays) {
+        return {
+          eligible: false,
+          reason: pendingDays > 0
+            ? `Insufficient Sick Leave balance. You have ${balance.sickLeave.available} days left (${pendingDays} day(s) pending approval).`
+            : `Insufficient Sick Leave balance. You have ${balance.sickLeave.available} days left.`
+        };
       }
       
       // Check document requirement
       // Rule: first 4 days without cert.
-      const wouldBeUsedWithoutCert = balance.sickLeave.withoutCertificate.used + numberOfDays;
+      const wouldBeUsedWithoutCert = balance.sickLeave.withoutCertificate.used + pendingDays + numberOfDays;
       if (wouldBeUsedWithoutCert > 4) {
         return { eligible: true, requiresDocument: true };
       }
@@ -173,15 +196,22 @@ export class LeaveBalanceEngine {
     }
 
     if (leaveType === 'Restricted Holiday') {
-      if (balance.restrictedLeave.available < numberOfDays) {
+      const available = Math.max(0, (balance.restrictedLeave.available || 0) - pendingDays);
+      if (available < numberOfDays) {
         return { eligible: false, reason: 'Restricted Holiday quota exceeded. Maximum 2 allowed per year.' };
       }
       return { eligible: true };
     }
 
     if (leaveType === 'Compensatory Off') {
-      if (balance.compensatoryOff.available < numberOfDays) {
-         return { eligible: false, reason: `Insufficient Comp-Off balance. You have ${balance.compensatoryOff.available} days available.` };
+      const available = Math.max(0, (balance.compensatoryOff.available || 0) - pendingDays);
+      if (available < numberOfDays) {
+        return {
+          eligible: false,
+          reason: pendingDays > 0
+            ? `Insufficient Comp-Off balance. You have ${balance.compensatoryOff.available} day(s) available (${pendingDays} day(s) pending approval).`
+            : `Insufficient Comp-Off balance. You have ${balance.compensatoryOff.available} days available.`
+        };
       }
       return { eligible: true };
     }
@@ -190,7 +220,8 @@ export class LeaveBalanceEngine {
       if (balance.maternityLeave.total === 0) {
         return { eligible: false, reason: 'Maternity leave is only applicable for female employees.' };
       }
-      if (balance.maternityLeave.available < numberOfDays) {
+      const available = Math.max(0, (balance.maternityLeave.available || 0) - pendingDays);
+      if (available < numberOfDays) {
         return { eligible: false, reason: `Insufficient Maternity Leave balance. You have ${balance.maternityLeave.available} days left.` };
       }
       return { eligible: true }; 
@@ -200,7 +231,8 @@ export class LeaveBalanceEngine {
       if (balance.paternityLeave.total === 0) {
         return { eligible: false, reason: 'Paternity leave is only applicable for male employees.' };
       }
-      if (balance.paternityLeave.available < numberOfDays) {
+      const available = Math.max(0, (balance.paternityLeave.available || 0) - pendingDays);
+      if (available < numberOfDays) {
         return { eligible: false, reason: `Insufficient Paternity Leave balance. You have ${balance.paternityLeave.available} days left.` };
       }
       return { eligible: true }; 

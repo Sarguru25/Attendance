@@ -114,7 +114,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
 
     // 3. Attendance and Leave records
     const attendance = data.attendances?.find((a: any) => isSameDay(new Date(a.date), day));
-    const leave = data.leaves?.find((l: any) => {
+    const dayLeaves = data.leaves?.filter((l: any) => {
       const from = new Date(l.fromDate);
       const to = new Date(l.toDate);
       from.setHours(0, 0, 0, 0);
@@ -122,7 +122,10 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
       const current = new Date(day);
       current.setHours(0, 0, 0, 0);
       return current >= from && current <= to;
-    });
+    }) || [];
+    const leave = dayLeaves[0] || null;
+    const firstHalfLeave = dayLeaves.find((l: any) => l.duration === 'full_day' || l.halfDaySession === 'first_half');
+    const secondHalfLeave = dayLeaves.find((l: any) => l.duration === 'full_day' || l.halfDaySession === 'second_half');
 
     const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
     const isBeforeJoining = data.user?.joiningDate && day < new Date(new Date(data.user.joiningDate).setHours(0, 0, 0, 0));
@@ -168,11 +171,11 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     // FIRST HALF
     let firstHalf: any = { label: 'Absent', color: getStyle('absent') };
 
-    if (leave && (leave.duration === 'full_day' || leave.halfDaySession === 'first_half')) {
-      firstHalf = { label: leave.leaveType || 'Leave', color: getStyle('leave') };
+    if (firstHalfLeave) {
+      firstHalf = { label: firstHalfLeave.leaveType || 'Leave', color: getStyle('leave') };
     } else if (attendance?.firstHalf?.status === 'leave') {
       firstHalf = { label: attendance.firstHalf.leaveType || 'Leave', color: getStyle('leave') };
-    } else if (attendance?.firstHalf?.status === 'present' || attendance?.firstHalf?.status === 'late' || attendance?.firstHalf?.checkIn || attendance?.sessions?.[0]?.checkIn || (attendance?.loginTime && (!leave || leave.halfDaySession === 'second_half') && attendance?.status !== 'absent')) {
+    } else if (attendance?.firstHalf?.status === 'present' || attendance?.firstHalf?.status === 'late' || attendance?.firstHalf?.checkIn || attendance?.sessions?.[0]?.checkIn || (attendance?.loginTime && !firstHalfLeave && attendance?.status !== 'absent')) {
       const isLate = attendance?.firstHalf?.status === 'late' || (attendance?.sessions?.[0]?.lateMinutes > 0);
       const lateMins = attendance?.firstHalf?.lateMinutes || attendance?.sessions?.[0]?.lateMinutes;
       firstHalf = {
@@ -188,8 +191,8 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     // SECOND HALF
     let secondHalf: any = { label: 'Absent', color: getStyle('absent') };
 
-    if (leave && (leave.duration === 'full_day' || leave.halfDaySession === 'second_half')) {
-      secondHalf = { label: leave.leaveType || 'Leave', color: getStyle('leave') };
+    if (secondHalfLeave) {
+      secondHalf = { label: secondHalfLeave.leaveType || 'Leave', color: getStyle('leave') };
     } else if (attendance?.secondHalf?.status === 'leave') {
       secondHalf = { label: attendance.secondHalf.leaveType || 'Leave', color: getStyle('leave') };
     } else if (attendance?.secondHalf?.status === 'present' || attendance?.secondHalf?.status === 'late' || attendance?.secondHalf?.checkIn || attendance?.sessions?.[1]?.checkIn) {
@@ -226,7 +229,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     setIsEditModalOpen(true);
 
     const attendance = data?.attendances?.find((a: any) => isSameDay(new Date(a.date), day));
-    const leave = data?.leaves?.find((l: any) => {
+    const dayLeaves = data?.leaves?.filter((l: any) => {
       const from = new Date(l.fromDate);
       const to = new Date(l.toDate);
       from.setHours(0, 0, 0, 0);
@@ -234,7 +237,10 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
       const current = new Date(day);
       current.setHours(0, 0, 0, 0);
       return current >= from && current <= to;
-    });
+    }) || [];
+    const leave = dayLeaves[0] || null;
+    const firstHalfLeave = dayLeaves.find((l: any) => l.duration === 'full_day' || l.halfDaySession === 'first_half');
+    const secondHalfLeave = dayLeaves.find((l: any) => l.duration === 'full_day' || l.halfDaySession === 'second_half');
 
     const fh = attendance?.firstHalf || {};
     const sh = attendance?.secondHalf || {};
@@ -245,19 +251,19 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
     const shIn = sh.checkIn ? format(new Date(sh.checkIn), 'HH:mm') : (attendance?.sessions?.[1]?.checkIn ? format(new Date(attendance.sessions[1].checkIn), 'HH:mm') : '');
     const shOut = sh.checkOut ? format(new Date(sh.checkOut), 'HH:mm') : (attendance?.sessions?.[1]?.checkOut ? format(new Date(attendance.sessions[1].checkOut), 'HH:mm') : '');
 
-    const firstStatus = fh.status || (leave && leave.halfDaySession === 'first_half' ? 'leave' : (attendance ? (attendance.status === 'absent' ? 'absent' : 'present') : 'present'));
-    const secondStatus = sh.status || (leave && leave.halfDaySession === 'second_half' ? 'leave' : (attendance ? (attendance.status === 'absent' ? 'absent' : 'present') : 'present'));
+    const firstStatus = fh.status || (firstHalfLeave ? 'leave' : (attendance ? (attendance.status === 'absent' ? 'absent' : 'present') : 'present'));
+    const secondStatus = sh.status || (secondHalfLeave ? 'leave' : (attendance ? (attendance.status === 'absent' ? 'absent' : 'present') : 'present'));
 
     setEditData({
       status: attendance?.status || (leave ? leave.leaveType : 'present'),
       duration: leave?.duration || 'full_day',
       halfDaySession: leave?.halfDaySession || 'first_half',
       firstHalfStatus: firstStatus,
-      firstHalfLeaveType: fh.leaveType || leave?.leaveType || 'Casual Leave',
+      firstHalfLeaveType: fh.leaveType || firstHalfLeave?.leaveType || 'Casual Leave',
       firstHalfIn: fhIn,
       firstHalfOut: fhOut,
       secondHalfStatus: secondStatus,
-      secondHalfLeaveType: sh.leaveType || leave?.leaveType || 'Casual Leave',
+      secondHalfLeaveType: sh.leaveType || secondHalfLeave?.leaveType || 'Casual Leave',
       secondHalfIn: shIn,
       secondHalfOut: shOut
     });

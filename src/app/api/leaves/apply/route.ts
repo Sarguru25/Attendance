@@ -69,23 +69,29 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Check for overlapping leaves
-    const overlappingLeave = await Leave.findOne({
+    const overlappingLeaves = await Leave.find({
       userId: session.user.id,
       status: { $in: ['pending', 'approved'] },
-      $or: [
-        { fromDate: { $lte: end }, toDate: { $gte: start } }
-      ]
+      fromDate: { $lte: end },
+      toDate: { $gte: start }
     });
 
-    if (overlappingLeave) {
-      if (duration === 'half_day' && overlappingLeave.duration === 'half_day') {
-        if (overlappingLeave.halfDaySession === finalHalfDaySession) {
-          return NextResponse.json({ error: `You already have a leave request for the ${finalHalfDaySession === 'first_half' ? 'First Half' : 'Second Half'} on this date.` }, { status: 400 });
-        } else {
-          return NextResponse.json({ error: 'You cannot apply for First Half and Second Half separately. Please apply for a full day leave instead.' }, { status: 400 });
+    if (overlappingLeaves.length > 0) {
+      if (duration === 'half_day') {
+        for (const ol of overlappingLeaves) {
+          if (ol.duration !== 'half_day') {
+            return NextResponse.json({ error: 'You already have a full day leave during this period.' }, { status: 400 });
+          }
+          if (ol.halfDaySession === finalHalfDaySession) {
+            return NextResponse.json({
+              error: `You already have a leave request for the ${finalHalfDaySession === 'first_half' ? 'First Half' : 'Second Half'} on this date.`
+            }, { status: 400 });
+          }
         }
+        // Opposite half day session is allowed
+      } else {
+        return NextResponse.json({ error: 'You already have a pending or approved leave during this period.' }, { status: 400 });
       }
-      return NextResponse.json({ error: 'You already have a pending or approved leave during this period.' }, { status: 400 });
     }
 
     const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');

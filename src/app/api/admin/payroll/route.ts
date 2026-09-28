@@ -174,20 +174,21 @@ export async function POST(req: NextRequest) {
         const isWorkingDay = !isWeeklyOff && !isHoliday;
 
         const att = attendances.find(a => isSameDay(new Date(a.date), d));
-        const leaveForDay = leaves.find(l => {
+        const leavesForDay = leaves.filter(l => {
           const from = new Date(l.fromDate);
           const to = new Date(l.toDate);
           from.setHours(0,0,0,0);
           to.setHours(23,59,59,999);
           return d >= from && d <= to;
         });
-
+        const firstHalfLeave = leavesForDay.find(l => l.duration !== 'half_day' || l.halfDaySession === 'first_half');
+        const secondHalfLeave = leavesForDay.find(l => l.duration !== 'half_day' || l.halfDaySession === 'second_half');
 
         if (isWorkingDay) {
           if (att && (att.firstHalf || att.secondHalf)) {
             // Process First Half
-            if (att.firstHalf?.status === 'leave' || (leaveForDay && (leaveForDay.duration !== 'half_day' || leaveForDay.halfDaySession === 'first_half'))) {
-              const lType = att.firstHalf?.leaveType || leaveForDay?.leaveType;
+            if (att.firstHalf?.status === 'leave' || firstHalfLeave) {
+              const lType = att.firstHalf?.leaveType || firstHalfLeave?.leaveType;
               const unpaidTypes = ['leave without pay', 'lwp', 'unpaid leave', 'unpaid'];
               if (lType && unpaidTypes.includes(lType.trim().toLowerCase())) {
                 unpaidLeaveDays += 0.5;
@@ -202,8 +203,8 @@ export async function POST(req: NextRequest) {
             }
 
             // Process Second Half
-            if (att.secondHalf?.status === 'leave' || (leaveForDay && (leaveForDay.duration !== 'half_day' || leaveForDay.halfDaySession === 'second_half'))) {
-              const lType = att.secondHalf?.leaveType || leaveForDay?.leaveType;
+            if (att.secondHalf?.status === 'leave' || secondHalfLeave) {
+              const lType = att.secondHalf?.leaveType || secondHalfLeave?.leaveType;
               const unpaidTypes = ['leave without pay', 'lwp', 'unpaid leave', 'unpaid'];
               if (lType && unpaidTypes.includes(lType.trim().toLowerCase())) {
                 unpaidLeaveDays += 0.5;
@@ -216,29 +217,37 @@ export async function POST(req: NextRequest) {
             } else {
               absentDays += 0.5;
             }
-          } else if (leaveForDay) {
-            if (leaveForDay.duration === 'half_day') {
+          } else if (leavesForDay.length > 0) {
+            if (firstHalfLeave) {
               const unpaidTypes = ['leave without pay', 'lwp', 'unpaid leave', 'unpaid'];
-              if (unpaidTypes.includes((leaveForDay.leaveType || '').trim().toLowerCase())) {
+              if (unpaidTypes.includes((firstHalfLeave.leaveType || '').trim().toLowerCase())) {
                 unpaidLeaveDays += 0.5;
               } else {
                 paidLeaveDays += 0.5;
               }
-              if (leaveForDay.leaveType === 'Compensatory Off') compOffsTaken += 0.5;
-
+              if (firstHalfLeave.leaveType === 'Compensatory Off') compOffsTaken += 0.5;
+            } else {
               if (att && ['present', 'late'].includes(att.status)) {
                 presentDays += 0.5;
               } else {
                 absentDays += 0.5;
               }
-            } else {
+            }
+
+            if (secondHalfLeave) {
               const unpaidTypes = ['leave without pay', 'lwp', 'unpaid leave', 'unpaid'];
-              if (unpaidTypes.includes((leaveForDay.leaveType || '').trim().toLowerCase())) {
-                unpaidLeaveDays += 1;
+              if (unpaidTypes.includes((secondHalfLeave.leaveType || '').trim().toLowerCase())) {
+                unpaidLeaveDays += 0.5;
               } else {
-                paidLeaveDays += 1;
+                paidLeaveDays += 0.5;
               }
-              if (leaveForDay.leaveType === 'Compensatory Off') compOffsTaken += 1;
+              if (secondHalfLeave.leaveType === 'Compensatory Off') compOffsTaken += 0.5;
+            } else {
+              if (att && ['present', 'late'].includes(att.status)) {
+                presentDays += 0.5;
+              } else {
+                absentDays += 0.5;
+              }
             }
           } else {
             if (att) {

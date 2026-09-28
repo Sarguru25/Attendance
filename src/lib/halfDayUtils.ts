@@ -1,5 +1,11 @@
 import mongoose from 'mongoose';
 
+export const VALID_ATTENDANCE_STATUSES = [
+  'present', 'absent', 'half-day', 'late', 'Weekly Off', 'Work From Home',
+  'On Duty', 'Restricted Holiday', 'Leave', 'Holiday',
+  'Sick Leave', 'Casual Leave', 'Compensatory Off', 'Maternity Leave', 'Paternity Leave', 'Leave Without Pay'
+];
+
 export interface HalfSessionBoundaries {
   firstHalf: {
     start: string; // e.g. "09:00"
@@ -381,7 +387,9 @@ export function calculateDailyAttendance({
   } else if (isWeeklyOff) {
     finalStatus = 'Weekly Off';
   } else if (firstHalf.status === 'leave' && secondHalf.status === 'leave') {
-    finalStatus = 'Leave';
+    finalStatus = (firstHalf.leaveType && firstHalf.leaveType === secondHalf.leaveType && VALID_ATTENDANCE_STATUSES.includes(firstHalf.leaveType))
+      ? firstHalf.leaveType
+      : 'Leave';
   } else if ((firstHalf.status === 'present' || firstHalf.status === 'late') && (secondHalf.status === 'present' || secondHalf.status === 'late')) {
     if (totalWorkedHours > 0 && totalWorkedHours < 5) {
       finalStatus = 'half-day';
@@ -488,14 +496,13 @@ export async function syncLeaveToAttendance(leave: any, overrideApproved: boolea
         attendance.unpaidLeaveDays = 1;
       }
     } else if (leave.duration === 'half_day') {
-      attendance.status = 'half-day';
       if (leave.halfDaySession === 'first_half') {
         attendance.firstHalf = {
           status: 'leave',
           leaveId: leave._id,
           leaveType: leave.leaveType
         };
-        if (!attendance.secondHalf?.status || attendance.secondHalf.status === 'leave') {
+        if (!attendance.secondHalf?.status) {
           attendance.secondHalf = { status: null };
         }
       } else if (leave.halfDaySession === 'second_half') {
@@ -504,15 +511,31 @@ export async function syncLeaveToAttendance(leave: any, overrideApproved: boolea
           leaveId: leave._id,
           leaveType: leave.leaveType
         };
-        if (!attendance.firstHalf?.status || attendance.firstHalf.status === 'leave') {
+        if (!attendance.firstHalf?.status) {
           attendance.firstHalf = { status: null };
         }
       }
-      if (isPaid) {
-        attendance.paidLeaveDays = (attendance.paidLeaveDays || 0) + 0.5;
+
+      if (attendance.firstHalf?.status === 'leave' && attendance.secondHalf?.status === 'leave') {
+        attendance.status = ((attendance.firstHalf.leaveType && attendance.firstHalf.leaveType === attendance.secondHalf.leaveType && VALID_ATTENDANCE_STATUSES.includes(attendance.firstHalf.leaveType))
+          ? attendance.firstHalf.leaveType
+          : 'Leave') as any;
       } else {
-        attendance.unpaidLeaveDays = (attendance.unpaidLeaveDays || 0) + 0.5;
+        attendance.status = 'half-day';
       }
+
+      let pDays = 0;
+      let uDays = 0;
+      if (attendance.firstHalf?.status === 'leave' && attendance.firstHalf.leaveType) {
+        if (isLeaveTypePaid(attendance.firstHalf.leaveType)) pDays += 0.5;
+        else uDays += 0.5;
+      }
+      if (attendance.secondHalf?.status === 'leave' && attendance.secondHalf.leaveType) {
+        if (isLeaveTypePaid(attendance.secondHalf.leaveType)) pDays += 0.5;
+        else uDays += 0.5;
+      }
+      attendance.paidLeaveDays = pDays;
+      attendance.unpaidLeaveDays = uDays;
     }
 
     await attendance.save({ bypassTenant: true } as any);

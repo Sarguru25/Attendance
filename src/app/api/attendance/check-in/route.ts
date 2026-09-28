@@ -33,15 +33,19 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'No shift assigned' }, { status: 400 });
     }
 
-    // Check for approved leave today
-    const approvedLeave = await Leave.findOne({
+    // Check for approved leaves today
+    const approvedLeaves = await Leave.find({
       userId,
       status: 'approved',
       fromDate: { $lte: todayEnd },
       toDate: { $gte: todayStart }
     });
 
-    if (approvedLeave && approvedLeave.duration !== 'half_day') {
+    const isFullDayApproved = approvedLeaves.some(l => l.duration !== 'half_day');
+    const hasFirstHalfApproved = approvedLeaves.some(l => l.duration === 'half_day' && l.halfDaySession === 'first_half');
+    const hasSecondHalfApproved = approvedLeaves.some(l => l.duration === 'half_day' && l.halfDaySession === 'second_half');
+
+    if (isFullDayApproved || (hasFirstHalfApproved && hasSecondHalfApproved)) {
       return Response.json({ error: 'You are on an approved full-day leave today.' }, { status: 400 });
     }
 
@@ -55,7 +59,7 @@ export async function POST(req: NextRequest) {
         userId,
         date: todayStart,
         shiftId: shift._id,
-        status: approvedLeave ? 'half-day' : 'present',
+        status: (hasFirstHalfApproved || hasSecondHalfApproved) ? 'half-day' : 'present',
         sessions: [],
         companyId: session.user.companyId,
       });
@@ -63,8 +67,11 @@ export async function POST(req: NextRequest) {
 
     const boundaries = calculateHalfSession(shift);
 
-    let isFirstHalfLeave = approvedLeave?.duration === 'half_day' && approvedLeave?.halfDaySession === 'first_half';
-    let isSecondHalfLeave = approvedLeave?.duration === 'half_day' && approvedLeave?.halfDaySession === 'second_half';
+    const firstHalfLeave = approvedLeaves.find(l => l.duration === 'half_day' && l.halfDaySession === 'first_half');
+    const secondHalfLeave = approvedLeaves.find(l => l.duration === 'half_day' && l.halfDaySession === 'second_half');
+
+    let isFirstHalfLeave = !!firstHalfLeave;
+    let isSecondHalfLeave = !!secondHalfLeave;
 
     if (existingAttendance.firstHalf?.checkIn && !existingAttendance.firstHalf?.checkOut && !isFirstHalfLeave) {
       return Response.json({ error: 'You are already checked in for the First Half. Please check out first.' }, { status: 400 });
@@ -128,11 +135,11 @@ export async function POST(req: NextRequest) {
         checkIn: now,
         lateMinutes
       };
-      if (isSecondHalfLeave && approvedLeave) {
+      if (isSecondHalfLeave && secondHalfLeave) {
         existingAttendance.secondHalf = {
           status: 'leave',
-          leaveId: approvedLeave._id,
-          leaveType: approvedLeave.leaveType
+          leaveId: secondHalfLeave._id,
+          leaveType: secondHalfLeave.leaveType
         };
       }
     } else {
@@ -141,11 +148,11 @@ export async function POST(req: NextRequest) {
         checkIn: now,
         lateMinutes
       };
-      if (isFirstHalfLeave && approvedLeave) {
+      if (isFirstHalfLeave && firstHalfLeave) {
         existingAttendance.firstHalf = {
           status: 'leave',
-          leaveId: approvedLeave._id,
-          leaveType: approvedLeave.leaveType
+          leaveId: firstHalfLeave._id,
+          leaveType: firstHalfLeave.leaveType
         };
       }
     }
@@ -162,7 +169,7 @@ export async function POST(req: NextRequest) {
       existingAttendance.lateMinutes = lateMinutes;
     }
 
-    if (approvedLeave) {
+    if (isFirstHalfLeave || isSecondHalfLeave) {
       existingAttendance.status = 'half-day';
     } else if (existingAttendance.firstHalf?.status === 'late' || existingAttendance.secondHalf?.status === 'late') {
       existingAttendance.status = 'late';
