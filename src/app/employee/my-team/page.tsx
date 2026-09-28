@@ -156,12 +156,17 @@ export default function MyTeamPage() {
         return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success border border-success/20 rounded-md flex items-center w-fit"><CheckCircle2 className="w-3 h-3 mr-1.5" /> Present</span>;
       case 'late':
         return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-warning/10 text-warning border border-warning/20 rounded-md flex items-center w-fit"><Clock className="w-3 h-3 mr-1.5" /> Late</span>;
-      case 'leave':
       case 'half-day':
-        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> {s === 'half-day' ? 'Half Day' : 'Leave'}</span>;
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Half Day</span>;
+      case 'leave':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Leave</span>;
       case 'absent':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive border border-destructive/20 rounded-md flex items-center w-fit"><XCircle className="w-3 h-3 mr-1.5" /> Absent</span>;
       default:
-        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive border border-destructive/20 rounded-md flex items-center w-fit"><XCircle className="w-3 h-3 mr-1.5" /> {s === 'absent' ? 'Absent' : s}</span>;
+        if (s.includes('leave')) {
+          return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> {status}</span>;
+        }
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive border border-destructive/20 rounded-md flex items-center w-fit"><XCircle className="w-3 h-3 mr-1.5" /> {s === 'absent' ? 'Absent' : status}</span>;
     }
   };
 
@@ -486,9 +491,9 @@ export default function MyTeamPage() {
                         <div className="flex items-center justify-between">
                           <h4 className="text-sm font-medium">Recent Attendance History</h4>
                         </div>
-                        <div className="overflow-x-auto border border-border rounded-lg">
+                        <div className="overflow-x-auto border border-border rounded-lg max-h-96 overflow-y-auto">
                           <table className="w-full text-left text-sm">
-                            <thead className="bg-muted/50 border-b border-border">
+                            <thead className="bg-muted/50 border-b border-border sticky top-0 bg-card z-10">
                               <tr>
                                 <th className="px-4 py-2 font-medium">Date</th>
                                 <th className="px-4 py-2 font-medium">Status</th>
@@ -497,7 +502,7 @@ export default function MyTeamPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                              {employeeDetails.attendances.slice(0, 15).map((record: any) => (
+                              {employeeDetails.attendances.map((record: any) => (
                                 <tr key={record._id}>
                                   <td className="px-4 py-2">{new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
                                   <td className="px-4 py-2">{getStatusBadge(record.status)}</td>
