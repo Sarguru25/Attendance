@@ -39,22 +39,87 @@ export default function EmployeeAttendanceClient() {
     const sh = typeof att === 'object' ? att?.secondHalf : null;
 
     let subBadge = null;
-    if (fh?.status === 'leave') {
+    if (fh?.status === 'leave' && sh?.status === 'leave') {
+      subBadge = (
+        <div className="text-[10px] font-bold text-amber-500 mt-1 space-y-0.5">
+          <div>1st Half: {fh.leaveType || 'Leave'}</div>
+          <div>2nd Half: {sh.leaveType || 'Leave'}</div>
+        </div>
+      );
+    } else if (fh?.status === 'leave') {
       subBadge = <div className="text-[10px] font-bold text-amber-500 mt-1">1st Half: {fh.leaveType || 'Leave'}</div>;
     } else if (sh?.status === 'leave') {
       subBadge = <div className="text-[10px] font-bold text-amber-500 mt-1">2nd Half: {sh.leaveType || 'Leave'}</div>;
     }
 
     switch (status) {
-      case 'present': return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success border border-success/20 rounded-md flex items-center w-fit"><CheckCircle2 className="w-3 h-3 mr-1.5" /> Present</span>;
-      case 'late': return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-warning/10 text-warning border border-warning/20 rounded-md flex items-center w-fit"><AlertCircle className="w-3 h-3 mr-1.5" /> Late</span>;
-      case 'half-day': return (
-        <div>
-          <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><Clock className="w-3 h-3 mr-1.5" /> Half Day</span>
-          {subBadge}
-        </div>
-      );
-      default: return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive border border-destructive/20 rounded-md flex items-center w-fit"><XCircle className="w-3 h-3 mr-1.5" /> Absent</span>;
+      case 'present':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-success/10 text-success border border-success/20 rounded-md flex items-center w-fit"><CheckCircle2 className="w-3 h-3 mr-1.5" /> Present</span>;
+      case 'late':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-warning/10 text-warning border border-warning/20 rounded-md flex items-center w-fit"><AlertCircle className="w-3 h-3 mr-1.5" /> Late</span>;
+      case 'half-day':
+        return (
+          <div>
+            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><Clock className="w-3 h-3 mr-1.5" /> Half Day</span>
+            {subBadge}
+          </div>
+        );
+      case 'Sick Leave':
+        return (
+          <div>
+            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Sick Leave</span>
+            {subBadge}
+          </div>
+        );
+      case 'Casual Leave':
+        return (
+          <div>
+            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Casual Leave</span>
+            {subBadge}
+          </div>
+        );
+      case 'Compensatory Off':
+        return (
+          <div>
+            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md flex items-center w-fit"><CheckCircle2 className="w-3 h-3 mr-1.5" /> Compensatory Off</span>
+            {subBadge}
+          </div>
+        );
+      case 'Leave':
+        return (
+          <div>
+            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Leave</span>
+            {subBadge}
+          </div>
+        );
+      case 'Restricted Holiday':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Restricted Holiday</span>;
+      case 'Holiday':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-teal-500/10 text-teal-400 border border-teal-500/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Holiday</span>;
+      case 'Weekly Off':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-muted text-muted-foreground border border-border rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Weekly Off</span>;
+      case 'Work From Home':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center w-fit"><Clock className="w-3 h-3 mr-1.5" /> Work From Home</span>;
+      case 'On Duty':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-md flex items-center w-fit"><CheckCircle2 className="w-3 h-3 mr-1.5" /> On Duty</span>;
+      case 'Maternity Leave':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Maternity Leave</span>;
+      case 'Paternity Leave':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-md flex items-center w-fit"><CalendarIcon className="w-3 h-3 mr-1.5" /> Paternity Leave</span>;
+      case 'Leave Without Pay':
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive border border-destructive/20 rounded-md flex items-center w-fit"><XCircle className="w-3 h-3 mr-1.5" /> Leave Without Pay</span>;
+      default:
+        if (status && (status.toLowerCase().includes('leave') || status.toLowerCase().includes('off') || status.toLowerCase().includes('holiday'))) {
+          return (
+            <div>
+              <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md flex items-center w-fit">
+                <CalendarIcon className="w-3 h-3 mr-1.5" /> {status}
+              </span>
+              {subBadge}
+            </div>
+          );
+        }
+        return <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive border border-destructive/20 rounded-md flex items-center w-fit"><XCircle className="w-3 h-3 mr-1.5" /> Absent</span>;
     }
   };
 

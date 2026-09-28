@@ -151,6 +151,12 @@ export default function AttendanceClient() {
       'Restricted Holiday': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
       'Leave': 'bg-pink-500/10 text-pink-400 border-pink-500/20',
       'Holiday': 'bg-teal-500/10 text-teal-400 border-teal-500/20',
+      'Sick Leave': 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+      'Casual Leave': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      'Compensatory Off': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      'Maternity Leave': 'bg-pink-500/10 text-pink-400 border-pink-500/20',
+      'Paternity Leave': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+      'Leave Without Pay': 'bg-destructive/10 text-destructive border-destructive/20',
     };
     return (
       <span className={`px-2.5 py-1 text-xs font-bold rounded-full border ${styles[status] || 'bg-muted text-muted-foreground border-border'}`}>
