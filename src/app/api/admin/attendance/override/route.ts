@@ -399,6 +399,7 @@ export async function POST(req: NextRequest) {
         { userId, date: attendanceDate },
         {
           $set: {
+            companyId: user.companyId || (user.companyIds && user.companyIds[0]),
             status: finalStatus,
             loginTime: parsedLoginTime,
             logoutTime: parsedLogoutTime,

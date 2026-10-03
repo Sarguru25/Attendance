@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const attendances = await Attendance.find({
       userId: targetUserId,
       date: { $gte: startDate, $lte: endDate }
-    }).lean();
+    }, null, { bypassTenant: true }).lean();
 
     // 2. Fetch Leaves
     const leaves = await Leave.find({
@@ -63,12 +63,13 @@ export async function GET(req: NextRequest) {
         { toDate: { $gte: startDate, $lte: endDate } },
         { fromDate: { $lte: startDate }, toDate: { $gte: endDate } }
       ]
-    }).lean();
+    }, null, { bypassTenant: true }).lean();
 
     // 3. Fetch Holidays
     const holidays = await Holiday.find({
-      date: { $gte: startDate, $lte: endDate }
-    }).lean();
+      date: { $gte: startDate, $lte: endDate },
+      ...(user?.companyId ? { $or: [{ companyId: user.companyId }, { companyId: { $exists: false } }, { companyId: null }] } : {})
+    }, null, { bypassTenant: true }).lean();
 
     // 4. Fetch Approved Permissions
     const Permission = (await import('@/models/Permission')).default;
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
       userId: targetUserId,
       date: { $gte: startDate, $lte: endDate },
       status: { $in: ['Approved', 'Pending Compensation', 'Partially Compensated', 'Fully Compensated'] as any }
-    }).lean();
+    }, null, { bypassTenant: true }).lean();
 
     return NextResponse.json({ 
       user,

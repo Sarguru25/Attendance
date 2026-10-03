@@ -107,8 +107,8 @@ export async function POST(req: NextRequest) {
 
     for (const user of users) {
       const shift = user.shiftId as any;
-      const workingDaysPattern = shift?.workingDays && shift.workingDays.length > 0 
-        ? shift.workingDays 
+      const workingDaysPattern = shift?.workingDays && shift.workingDays.length > 0
+        ? shift.workingDays
         : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']; // Default 6 days
 
       let totalWorkingDays = 0;
@@ -177,8 +177,8 @@ export async function POST(req: NextRequest) {
         const leavesForDay = leaves.filter(l => {
           const from = new Date(l.fromDate);
           const to = new Date(l.toDate);
-          from.setHours(0,0,0,0);
-          to.setHours(23,59,59,999);
+          from.setHours(0, 0, 0, 0);
+          to.setHours(23, 59, 59, 999);
           return d >= from && d <= to;
         });
         const firstHalfLeave = leavesForDay.find(l => l.duration !== 'half_day' || l.halfDaySession === 'first_half');
@@ -291,7 +291,7 @@ export async function POST(req: NextRequest) {
       const basicPlusDa = basicSalary + da;
 
       const salaryTimelineEffectiveFrom = salaryInfo?.effectiveFrom ? new Date(salaryInfo.effectiveFrom) : undefined;
-      const perDaySalary = totalCalendarDays > 0 ? monthlySalary / totalCalendarDays : 0; 
+      const perDaySalary = totalCalendarDays > 0 ? monthlySalary / totalCalendarDays : 0;
 
       // Deduction = Unemployed Days + Absent Days + Unpaid Leave Days (Paid leaves do not deduct from salary)
       const deductionDays = unemployedDays + absentDays + unpaidLeaveDays;
@@ -321,21 +321,21 @@ export async function POST(req: NextRequest) {
 
       if (user.salaryDeductions?.loan?.enabled) {
         let isWithinDates = true;
-        
+
         if (user.salaryDeductions.loan.startDate && user.salaryDeductions.loan.endDate) {
-           const payrollYearMonth = year * 100 + month; 
-           const startD = new Date(user.salaryDeductions.loan.startDate);
-           const endD = new Date(user.salaryDeductions.loan.endDate);
-           const startYM = startD.getFullYear() * 100 + (startD.getMonth() + 1);
-           const endYM = endD.getFullYear() * 100 + (endD.getMonth() + 1);
-           
-           if (payrollYearMonth < startYM || payrollYearMonth > endYM) {
-             isWithinDates = false;
-           }
+          const payrollYearMonth = year * 100 + month;
+          const startD = new Date(user.salaryDeductions.loan.startDate);
+          const endD = new Date(user.salaryDeductions.loan.endDate);
+          const startYM = startD.getFullYear() * 100 + (startD.getMonth() + 1);
+          const endYM = endD.getFullYear() * 100 + (endD.getMonth() + 1);
+
+          if (payrollYearMonth < startYM || payrollYearMonth > endYM) {
+            isWithinDates = false;
+          }
         }
 
         if (isWithinDates) {
-          const monthlyLoan = user.salaryDeductions.loan.monthlyDeduction 
+          const monthlyLoan = user.salaryDeductions.loan.monthlyDeduction
             || (user.salaryDeductions.loan.totalMonths > 0 ? (user.salaryDeductions.loan.principalAmount / user.salaryDeductions.loan.totalMonths) : 0);
           loanDeduction = Math.round(monthlyLoan);
 

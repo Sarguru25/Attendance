@@ -188,6 +188,7 @@ export async function POST(req: NextRequest) {
           if (!attendance) {
             attendance = new Attendance({
               userId: request.employeeId,
+              companyId: request.companyId,
               date: startOfDay,
               status: 'present'
             });
@@ -207,6 +208,7 @@ export async function POST(req: NextRequest) {
             const startOfDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
             attendance = new Attendance({
               userId: request.employeeId,
+              companyId: request.companyId,
               date: startOfDay,
               status: 'present'
             });
@@ -214,9 +216,14 @@ export async function POST(req: NextRequest) {
         }
 
         if (attendance) {
+          const user = await User.findById(attendance.userId, null, { bypassTenant: true }).populate({ path: 'shiftId', options: { bypassTenant: true } });
+          if (!attendance.companyId) {
+            attendance.companyId = request.companyId || user?.companyId || (user?.companyIds && user.companyIds[0]);
+          }
+
           if (request.requestedCheckIn) attendance.loginTime = request.requestedCheckIn;
           if (request.requestedCheckOut) attendance.logoutTime = request.requestedCheckOut;
-          if (attendance.sessions && attendance.sessions.length > 0) {
+          if (attendance.loginTime) {
             attendance.sessions = [{
               sessionOrder: 1,
               checkIn: attendance.loginTime,
@@ -226,7 +233,6 @@ export async function POST(req: NextRequest) {
             } as any];
           }
 
-          const user = await User.findById(attendance.userId, null, { bypassTenant: true }).populate({ path: 'shiftId', options: { bypassTenant: true } });
           const Leave = (await import('@/models/Leave')).default;
           const attendanceDate = new Date(attendance.date);
           const startOfDay = new Date(Date.UTC(attendanceDate.getUTCFullYear(), attendanceDate.getUTCMonth(), attendanceDate.getUTCDate(), 0, 0, 0, 0));

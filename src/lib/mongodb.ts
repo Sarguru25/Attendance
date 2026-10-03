@@ -3,6 +3,19 @@ import { multiTenantPlugin } from './multiTenantPlugin';
 
 // Plugin will be applied below if not already registered
 
+if (!process.env.MONGODB_URI) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('dotenv').config({ path: '.env.local' });
+    if (!process.env.MONGODB_URI) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('dotenv').config();
+    }
+  } catch {
+    // ignore
+  }
+}
+
 const MONGODB_URI = process.env.MONGODB_URI!;
 
 if (!MONGODB_URI) {
@@ -46,9 +59,9 @@ async function dbConnect() {
   try {
     const db = mongoose.connection.db;
     if (db) {
-      await db.collection('shifts').dropIndex('shiftName_1').catch(() => {});
-      await db.collection('leavepolicies').dropIndex('leaveCode_1').catch(() => {});
-      await db.collection('payrolls').dropIndex('userId_1_month_1_year_1').catch(() => {});
+      await db.collection('shifts').dropIndex('shiftName_1').catch(() => { });
+      await db.collection('leavepolicies').dropIndex('leaveCode_1').catch(() => { });
+      await db.collection('payrolls').dropIndex('userId_1_month_1_year_1').catch(() => { });
     }
   } catch (e) {
     console.error('Error dropping indexes:', e);
