@@ -31,6 +31,7 @@ export interface IPayroll extends Document {
   rentalDeduction?: number;
   loanDeduction?: number;
   otherDeductions?: number;
+  lossOfPay?: number;
   // Old fields for compatibility
   deductions?: number;
   finalSalary?: number;
@@ -41,6 +42,8 @@ export interface IPayroll extends Document {
     esi: number;
     hra: number;
     loan: number;
+    other?: number;
+    lossOfPay?: number;
   };
 }
 
@@ -76,6 +79,7 @@ const PayrollSchema: Schema = new Schema(
     rentalDeduction: { type: Number, default: 0 },
     loanDeduction: { type: Number, default: 0 },
     otherDeductions: { type: Number, default: 0 },
+    lossOfPay: { type: Number, default: 0 },
     // Old fields
     deductions: { type: Number },
     finalSalary: { type: Number },
@@ -85,7 +89,9 @@ const PayrollSchema: Schema = new Schema(
     salaryDeductionsSnapshot: {
       esi: { type: Number, default: 0 },
       hra: { type: Number, default: 0 },
-      loan: { type: Number, default: 0 }
+      loan: { type: Number, default: 0 },
+      other: { type: Number, default: 0 },
+      lossOfPay: { type: Number, default: 0 }
     }
   },
   { timestamps: true }

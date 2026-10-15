@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     }
 
     const body = await req.json();
-    const { effectiveFrom, monthlySalary, basicSalary, hra, da, bonus, esiDeduction, rentalDeduction, loanDeduction } = body;
+    const { effectiveFrom, monthlySalary, basicSalary, hra, da, bonus, esiDeduction, rentalDeduction, loanDeduction, otherDeduction } = body;
 
     // Rule 4: Salary > 0 validation
     const salaryNum = Number(monthlySalary);
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const esiNum = Number(esiDeduction || 0);
     const rentalNum = Number(rentalDeduction || 0);
     const loanNum = Number(loanDeduction || 0);
+    const otherNum = Number(otherDeduction || 0);
 
     const calcTotalSalary = (bsNum + hraNum + daNum + bonusNum) > 0 ? (bsNum + hraNum + daNum + bonusNum) : salaryNum;
 
@@ -128,6 +129,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       esiDeduction: esiNum,
       rentalDeduction: rentalNum,
       loanDeduction: loanNum,
+      otherDeduction: otherNum,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -182,7 +184,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
     }
 
     const body = await req.json();
-    const { timelineId, effectiveFrom, monthlySalary, basicSalary, hra, da, bonus, esiDeduction, rentalDeduction, loanDeduction } = body;
+    const { timelineId, effectiveFrom, monthlySalary, basicSalary, hra, da, bonus, esiDeduction, rentalDeduction, loanDeduction, otherDeduction } = body;
 
     if (!timelineId) {
       return NextResponse.json({ error: 'Timeline ID is required' }, { status: 400 });
@@ -201,6 +203,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
     const esiNum = Number(esiDeduction || 0);
     const rentalNum = Number(rentalDeduction || 0);
     const loanNum = Number(loanDeduction || 0);
+    const otherNum = Number(otherDeduction || 0);
 
     const calcTotalSalary = (bsNum + hraNum + daNum + bonusNum) > 0 ? (bsNum + hraNum + daNum + bonusNum) : salaryNum;
 
@@ -254,6 +257,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
     user.salaryTimelines[timelineIndex].esiDeduction = esiNum;
     user.salaryTimelines[timelineIndex].rentalDeduction = rentalNum;
     user.salaryTimelines[timelineIndex].loanDeduction = loanNum;
+    user.salaryTimelines[timelineIndex].otherDeduction = otherNum;
     user.salaryTimelines[timelineIndex].updatedAt = new Date();
 
     // Rule 3: Sort automatically by effectiveFrom ASC

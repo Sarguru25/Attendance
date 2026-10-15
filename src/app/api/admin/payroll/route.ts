@@ -25,13 +25,14 @@ export async function GET(req: NextRequest) {
     const rawPayrolls = await Payroll.find({ month, year })
       .populate({
         path: 'userId',
-        select: 'name employeeId department profileImage shiftId designation joiningDate address location bankName accountNumber ifscCode leaveBalance salaryDeductions',
+        select: 'name employeeId department profileImage shiftId designation joiningDate address location bankName accountNumber ifscCode leaveBalance salaryDeductions companyId salaryTimelines',
         populate: {
           path: 'shiftId',
           model: 'Shift',
           select: 'shiftName workingDays'
         }
       })
+      .populate('companyId')
       .sort({ generatedAt: -1 })
       .lean();
 
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
         ? shift.workingDays
         : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']; // Default 6 days
 
-      let totalWorkingDays = 0;
+      let totalWorkingDays = totalCalendarDays;
       let weeklyOffDays = 0;
       let holidayDays = 0;
 
@@ -139,8 +140,6 @@ export async function POST(req: NextRequest) {
           weeklyOffDays++;
         } else if (isHoliday) {
           holidayDays++;
-        } else {
-          totalWorkingDays++;
         }
       });
 
@@ -293,10 +292,9 @@ export async function POST(req: NextRequest) {
       const salaryTimelineEffectiveFrom = salaryInfo?.effectiveFrom ? new Date(salaryInfo.effectiveFrom) : undefined;
       const perDaySalary = totalCalendarDays > 0 ? monthlySalary / totalCalendarDays : 0;
 
-      // Deduction = Unemployed Days + Absent Days + Unpaid Leave Days (Paid leaves do not deduct from salary)
+      // Loss of Pay (LOP) = Unemployed Days + Absent Days + Unpaid Leave Days
       const deductionDays = unemployedDays + absentDays + unpaidLeaveDays;
-      const otherDeductions = Math.round(deductionDays * perDaySalary);
-      let deductionAmount = otherDeductions;
+      const lossOfPay = Math.round(deductionDays * perDaySalary);
 
       // Calculate extra pay for unconsumed compensatory off days worked in this month
       const payableExtraDays = Math.max(0, extraWorkedDays - compOffsTaken);
@@ -308,7 +306,8 @@ export async function POST(req: NextRequest) {
       // Salary Deductions
       let esiDeduction = timeline?.esiDeduction || 0;
       let hraDeduction = timeline?.rentalDeduction || 0;
-      let loanDeduction = 0;
+      let loanDeduction = timeline?.loanDeduction || 0;
+      const timelineOtherDeductions = timeline?.otherDeduction || 0;
 
       // Fallbacks to user.salaryDeductions if not explicitly defined in timeline
       if (esiDeduction === 0 && monthlySalary <= 21000 && user.salaryDeductions?.esi?.enabled) {
@@ -319,7 +318,7 @@ export async function POST(req: NextRequest) {
         hraDeduction = user.salaryDeductions.hra.amount || 0;
       }
 
-      if (user.salaryDeductions?.loan?.enabled) {
+      if (loanDeduction === 0 && user.salaryDeductions?.loan?.enabled) {
         let isWithinDates = true;
 
         if (user.salaryDeductions.loan.startDate && user.salaryDeductions.loan.endDate) {
@@ -356,7 +355,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      deductionAmount += esiDeduction + hraDeduction + loanDeduction;
+      const deductionAmount = lossOfPay + timelineOtherDeductions + esiDeduction + hraDeduction + loanDeduction;
       const grossSalary = monthlySalary + extraPayAmount;
       const netSalary = grossSalary - deductionAmount;
 
@@ -391,7 +390,8 @@ export async function POST(req: NextRequest) {
         esiDeduction,
         rentalDeduction: hraDeduction,
         loanDeduction,
-        otherDeductions,
+        lossOfPay,
+        otherDeductions: timelineOtherDeductions,
         grossSalary: monthlySalary,
         deductionAmount,
         netSalary,
@@ -399,7 +399,9 @@ export async function POST(req: NextRequest) {
         salaryDeductionsSnapshot: {
           esi: esiDeduction,
           hra: hraDeduction,
-          loan: loanDeduction
+          loan: loanDeduction,
+          other: timelineOtherDeductions,
+          lossOfPay
         },
         // Legacy fields for backward compatibility
         deductions: deductionAmount,

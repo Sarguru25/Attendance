@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { Search, Edit, Loader2, Save, X, Clock, Calendar } from 'lucide-react';
 import { api } from '@/services/api';
 import SalaryTimelineManager from './SalaryTimelineManager';
+import { getSalaryForPayrollPeriod } from '@/lib/salaryUtils';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
@@ -31,16 +32,7 @@ export default function SalaryConfigurator() {
     setFormData({
       bankName: user.bankName || '',
       accountNumber: user.accountNumber || '',
-      ifscCode: user.ifscCode || '',
-      salaryDeductions: {
-        loan: {
-          enabled: user.salaryDeductions?.loan?.enabled || false,
-          principalAmount: user.salaryDeductions?.loan?.principalAmount || 0,
-          totalMonths: user.salaryDeductions?.loan?.totalMonths || 0,
-          startDate: user.salaryDeductions?.loan?.startDate ? new Date(user.salaryDeductions.loan.startDate).toISOString().split('T')[0] : '',
-          endDate: user.salaryDeductions?.loan?.endDate ? new Date(user.salaryDeductions.loan.endDate).toISOString().split('T')[0] : ''
-        }
-      }
+      ifscCode: user.ifscCode || ''
     });
   };
 
@@ -174,126 +166,78 @@ export default function SalaryConfigurator() {
                     </td>
                     
                     <td className="px-6 py-4">
-                      {isEditing ? (
-                        <div className="space-y-4 max-w-sm">
-                          {/* Company Loan */}
-                          <div className="bg-muted/30 p-3 rounded-xl border border-border">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-bold text-foreground">Company Loan</span>
-                              <label className="flex items-center cursor-pointer">
-                                <div className="relative">
-                                  <input 
-                                    type="checkbox" 
-                                    className="sr-only" 
-                                    checked={formData.salaryDeductions.loan.enabled} 
-                                    onChange={e => setFormData({
-                                      ...formData, 
-                                      salaryDeductions: {
-                                        ...formData.salaryDeductions, 
-                                        loan: { ...formData.salaryDeductions.loan, enabled: e.target.checked }
-                                      }
-                                    })} 
-                                  />
-                                  <div className={`block w-8 h-5 rounded-full transition-colors ${formData.salaryDeductions.loan.enabled ? 'bg-primary' : 'bg-muted border border-border'}`}></div>
-                                  <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition-transform ${formData.salaryDeductions.loan.enabled ? 'transform translate-x-3' : ''}`}></div>
-                                </div>
-                              </label>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-2 mb-2">
-                              <div>
-                                <label className="text-[10px] text-muted-foreground block mb-0.5">Principal (₹)</label>
-                                <input 
-                                  type="number" 
-                                  disabled={!formData.salaryDeductions.loan.enabled} 
-                                  className="w-full bg-background border border-border rounded-lg text-foreground px-2 py-1 text-xs outline-none disabled:opacity-50" 
-                                  value={formData.salaryDeductions.loan.principalAmount} 
-                                  onChange={e => setFormData({
-                                    ...formData, 
-                                    salaryDeductions: {
-                                      ...formData.salaryDeductions, 
-                                      loan: { ...formData.salaryDeductions.loan, principalAmount: Number(e.target.value) }
-                                    }
-                                  })} 
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-muted-foreground block mb-0.5">Months</label>
-                                <input 
-                                  type="number" 
-                                  disabled={!formData.salaryDeductions.loan.enabled} 
-                                  className="w-full bg-background border border-border rounded-lg text-foreground px-2 py-1 text-xs outline-none disabled:opacity-50" 
-                                  value={formData.salaryDeductions.loan.totalMonths} 
-                                  onChange={e => setFormData({
-                                    ...formData, 
-                                    salaryDeductions: {
-                                      ...formData.salaryDeductions, 
-                                      loan: { ...formData.salaryDeductions.loan, totalMonths: Number(e.target.value) }
-                                    }
-                                  })} 
-                                />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-[10px] text-muted-foreground block mb-0.5">Start Date</label>
-                                <input 
-                                  type="date" 
-                                  disabled={!formData.salaryDeductions.loan.enabled} 
-                                  className="w-full bg-background border border-border rounded-lg text-foreground px-1 py-1 text-[10px] outline-none disabled:opacity-50" 
-                                  value={formData.salaryDeductions.loan.startDate} 
-                                  onChange={e => setFormData({
-                                    ...formData, 
-                                    salaryDeductions: {
-                                      ...formData.salaryDeductions, 
-                                      loan: { ...formData.salaryDeductions.loan, startDate: e.target.value }
-                                    }
-                                  })} 
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-muted-foreground block mb-0.5">End Date</label>
-                                <input 
-                                  type="date" 
-                                  disabled={!formData.salaryDeductions.loan.enabled} 
-                                  className="w-full bg-background border border-border rounded-lg text-foreground px-1 py-1 text-[10px] outline-none disabled:opacity-50" 
-                                  value={formData.salaryDeductions.loan.endDate} 
-                                  onChange={e => setFormData({
-                                    ...formData, 
-                                    salaryDeductions: {
-                                      ...formData.salaryDeductions, 
-                                      loan: { ...formData.salaryDeductions.loan, endDate: e.target.value }
-                                    }
-                                  })} 
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        (() => {
-                          const isLoanActive = Boolean(user.salaryDeductions?.loan?.enabled);
-                          if (!isLoanActive) {
-                            return <div className="text-muted-foreground italic font-normal text-xs">No active deductions</div>;
-                          }
+                      {(() => {
+                        const currentMonth = new Date().getMonth() + 1;
+                        const currentYear = new Date().getFullYear();
+                        const activeSalaryInfo = getSalaryForPayrollPeriod(user, currentMonth, currentYear);
+                        const activeTimeline = activeSalaryInfo?.timeline;
+
+                        const deductions: { label: string; amount: number; color?: string }[] = [];
+
+                        if (activeTimeline?.esiDeduction && activeTimeline.esiDeduction > 0) {
+                          deductions.push({ label: 'ESI', amount: activeTimeline.esiDeduction });
+                        } else if (user.salaryDeductions?.esi?.enabled && user.salaryDeductions.esi.amount > 0) {
+                          deductions.push({ label: 'ESI', amount: user.salaryDeductions.esi.amount });
+                        }
+
+                        if (activeTimeline?.rentalDeduction && activeTimeline.rentalDeduction > 0) {
+                          deductions.push({ label: 'Rental', amount: activeTimeline.rentalDeduction });
+                        } else if (user.salaryDeductions?.hra?.enabled && user.salaryDeductions.hra.amount > 0) {
+                          deductions.push({ label: 'Rental', amount: user.salaryDeductions.hra.amount });
+                        }
+
+                        if (activeTimeline?.loanDeduction && activeTimeline.loanDeduction > 0) {
+                          deductions.push({ label: 'Company Loan', amount: activeTimeline.loanDeduction, color: 'text-warning' });
+                        } else if (user.salaryDeductions?.loan?.enabled) {
                           const monthlyLoan = user.salaryDeductions.loan.principalAmount && user.salaryDeductions.loan.totalMonths 
                             ? Math.round(user.salaryDeductions.loan.principalAmount / user.salaryDeductions.loan.totalMonths)
                             : (user.salaryDeductions.loan.monthlyDeduction || 0);
+                          if (monthlyLoan > 0) {
+                            deductions.push({ label: 'Company Loan', amount: monthlyLoan, color: 'text-warning' });
+                          }
+                        }
 
+                        if (activeTimeline?.otherDeduction && activeTimeline.otherDeduction > 0) {
+                          deductions.push({ label: 'Other', amount: activeTimeline.otherDeduction });
+                        }
+
+                        if (isEditing) {
                           return (
-                            <div className="text-xs space-y-1 font-bold">
-                              <div className="text-warning flex flex-col">
-                                <span>Company Loan (₹{monthlyLoan}/m)</span>
-                                {user.salaryDeductions.loan.startDate && user.salaryDeductions.loan.endDate && (
-                                  <span className="text-[10px] text-muted-foreground font-normal">
-                                    {new Date(user.salaryDeductions.loan.startDate).toISOString().split('T')[0]} to {new Date(user.salaryDeductions.loan.endDate).toISOString().split('T')[0]}
-                                  </span>
-                                )}
+                            <div className="space-y-1.5 py-1">
+                              {deductions.length === 0 ? (
+                                <div className="text-muted-foreground italic font-normal text-xs">No active deductions</div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {deductions.map((d, i) => (
+                                    <div key={i} className="text-xs font-bold flex items-center gap-1.5">
+                                      <span className="text-muted-foreground">{d.label}:</span>
+                                      <span className={d.color || 'text-foreground'}>₹{d.amount.toLocaleString('en-IN')}/m</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="text-[11px] text-muted-foreground font-medium pt-1">
+                                Configure deductions in <span className="text-primary font-bold">Salary Timeline</span>
                               </div>
                             </div>
                           );
-                        })()
-                      )}
+                        }
+
+                        if (deductions.length === 0) {
+                          return <div className="text-muted-foreground italic font-normal text-xs">No active deductions</div>;
+                        }
+
+                        return (
+                          <div className="space-y-1">
+                            {deductions.map((d, i) => (
+                              <div key={i} className="text-xs font-bold flex items-center gap-1.5">
+                                <span className="text-muted-foreground">{d.label}:</span>
+                                <span className={d.color || 'text-foreground'}>₹{d.amount.toLocaleString('en-IN')}/m</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </td>
                     
                     <td className="px-6 py-4 text-right">

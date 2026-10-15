@@ -27,14 +27,8 @@ export async function POST(req: NextRequest) {
     const startDate = startOfMonth(targetDate);
     const endDate = endOfMonth(targetDate);
 
-    // Calculate total working days
-    let totalWorkingDays = 0;
-    for (let d = 1; d <= getDaysInMonth(targetDate); d++) {
-      const current = new Date(year, month - 1, d);
-      if (current.getDay() !== 0) { // 0 is Sunday
-        totalWorkingDays++;
-      }
-    }
+    // Calculate total working days as total days in month
+    const totalWorkingDays = getDaysInMonth(targetDate);
 
     let usersQuery: any = { role: { $in: ['employee', 'intern', 'manager', 'team_head', 'department_head'] }, isActive: true };
     if (userId) {

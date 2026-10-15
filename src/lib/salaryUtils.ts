@@ -11,6 +11,7 @@ export interface ISalaryTimeline {
   esiDeduction?: number;
   rentalDeduction?: number;
   loanDeduction?: number;
+  otherDeduction?: number;
   createdAt?: Date | string;
   updatedAt?: Date | string;
 }
@@ -29,6 +30,7 @@ export interface ITimelineDisplayItem {
   esiDeduction: number;
   rentalDeduction: number;
   loanDeduction: number;
+  otherDeduction: number;
   status: 'Historical' | 'Current' | 'Future';
 }
 
@@ -105,6 +107,7 @@ export function computeTimelineDisplayList(
     const esiDeduction = item.esiDeduction || 0;
     const rentalDeduction = item.rentalDeduction || 0;
     const loanDeduction = item.loanDeduction || 0;
+    const otherDeduction = item.otherDeduction || 0;
 
     return {
       _id: item._id?.toString(),
@@ -120,6 +123,7 @@ export function computeTimelineDisplayList(
       esiDeduction,
       rentalDeduction,
       loanDeduction,
+      otherDeduction,
       status,
     };
   });
@@ -190,4 +194,91 @@ export function getSalaryForPayrollPeriod(
   }
 
   return null;
+}
+
+/**
+ * Resolves the full payslip breakdown with exact separation of:
+ * - Other Deductions from Salary Timeline (otherDeduction)
+ * - Loss of Pay for Absents & Un-paid leaves
+ */
+export function resolvePayslipBreakdown(payroll: any, user: any) {
+  const daysInMonth = payroll.totalCalendarDays || new Date(payroll.year, payroll.month, 0).getDate();
+  const monthlySalary = payroll.monthlySalary || 0;
+  const perDaySalary = daysInMonth > 0 ? (monthlySalary / daysInMonth) : 0;
+
+  const basicSalary = payroll.basicSalary ?? Math.round(monthlySalary * 0.5);
+  const hraAllowance = payroll.hra ?? Math.round(monthlySalary * 0.15);
+  const da = payroll.da ?? Math.max(0, monthlySalary - basicSalary - hraAllowance);
+  const bonus = payroll.bonus || 0;
+  const grossEarnings = payroll.grossSalary || (basicSalary + hraAllowance + da + bonus);
+
+  const esi = payroll.esiDeduction ?? payroll.salaryDeductionsSnapshot?.esi ?? 0;
+  const tds = payroll.tdsDeduction ?? payroll.salaryDeductionsSnapshot?.tds ?? 0;
+  const loan = payroll.loanDeduction ?? payroll.salaryDeductionsSnapshot?.loan ?? 0;
+  const rental = payroll.rentalDeduction ?? user?.salaryDeductions?.hra?.amount ?? payroll.salaryDeductionsSnapshot?.hra ?? 0;
+
+  // 1. Resolve Timeline Other Deduction from active timeline or snapshot
+  let timelineOtherDeduction = 0;
+  if (user?.salaryTimelines && user.salaryTimelines.length > 0) {
+    const salaryInfo = getSalaryForPayrollPeriod(user, payroll.month, payroll.year);
+    if (salaryInfo?.timeline?.otherDeduction != null) {
+      timelineOtherDeduction = salaryInfo.timeline.otherDeduction;
+    }
+  } else if (payroll.salaryDeductionsSnapshot?.other != null) {
+    timelineOtherDeduction = payroll.salaryDeductionsSnapshot.other;
+  }
+
+  // 2. Resolve Loss of Pay (LOP) for absents and un-paid leaves
+  let lossOfPay = 0;
+  if (payroll.lossOfPay != null) {
+    lossOfPay = payroll.lossOfPay;
+  } else {
+    const lopDays = payroll.deductionDays ?? ((payroll.absentDays || 0) + (payroll.unpaidLeaveDays || 0));
+    lossOfPay = Math.round(lopDays * perDaySalary);
+  }
+
+  // 3. Resolve Other Deductions (from Salary Timeline)
+  let otherDeductions = 0;
+  if (payroll.lossOfPay != null) {
+    otherDeductions = payroll.otherDeductions ?? timelineOtherDeduction;
+  } else if (timelineOtherDeduction > 0) {
+    otherDeductions = timelineOtherDeduction;
+  } else if (payroll.salaryDeductionsSnapshot?.other != null) {
+    otherDeductions = payroll.salaryDeductionsSnapshot.other;
+  } else {
+    // In legacy records where otherDeductions stored the total (LOP + timeline)
+    otherDeductions = Math.max(0, (payroll.otherDeductions || 0) - lossOfPay);
+  }
+
+  const calculatedTotalDeductions = esi + tds + loan + rental + otherDeductions + lossOfPay;
+  const totalDeductions = payroll.deductionAmount ?? payroll.deductions ?? calculatedTotalDeductions;
+  const netPayable = payroll.netSalary ?? payroll.finalSalary ?? (grossEarnings - totalDeductions);
+
+  const unpaidLeaveTaken = payroll.unpaidLeaveDays ?? payroll.absentDays ?? 0;
+  const paidLeaveTaken = payroll.paidLeaveDays ?? payroll.leaveDays ?? 0;
+  const weekOff = payroll.weeklyOffDays ?? 0;
+  const daysPaid = payroll.paidDays ?? Math.max(0, (payroll.totalWorkingDays || 0) - unpaidLeaveTaken);
+
+  return {
+    daysInMonth,
+    monthlySalary,
+    perDaySalary,
+    basicSalary,
+    hraAllowance,
+    da,
+    bonus,
+    grossEarnings,
+    esi,
+    tds,
+    loan,
+    rental,
+    otherDeductions,
+    lossOfPay,
+    totalDeductions,
+    netPayable,
+    unpaidLeaveTaken,
+    paidLeaveTaken,
+    weekOff,
+    daysPaid,
+  };
 }

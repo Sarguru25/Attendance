@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
     await dbConnect();
     const rawPayrolls = await Payroll.find({ userId: session.user.id })
       .sort({ year: -1, month: -1, generatedAt: -1, _id: -1 })
-      .populate('userId', 'name employeeId department designation bankName accountNumber ifscCode joiningDate address location leaveBalance salaryDeductions')
+      .populate('userId', 'name employeeId department designation bankName accountNumber ifscCode joiningDate address location leaveBalance salaryDeductions companyId salaryTimelines')
+      .populate('companyId')
       .lean();
 
     // Deduplicate: if there are multiple payrolls for the same month & year, keep the latest one and delete older ones from DB

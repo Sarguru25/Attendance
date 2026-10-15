@@ -35,7 +35,13 @@ export async function GET(req: NextRequest) {
     const user = payroll.userId as any;
     const monthName = format(new Date(payroll.year, payroll.month - 1), 'MMMM yyyy');
 
-    const company = await Company.findById(payroll.companyId) || null;
+    let company = payroll.companyId ? await Company.findById(payroll.companyId) : null;
+    if (!company && user?.companyId) {
+      company = await Company.findById(user.companyId);
+    }
+    if (!company) {
+      company = await Company.findOne({ status: true });
+    }
     
     const pdfBuffer = await generatePayslipPdf(payroll, user, company);
 

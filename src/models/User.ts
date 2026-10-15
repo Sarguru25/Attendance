@@ -34,6 +34,7 @@ export interface IUser extends Document {
     esiDeduction?: number;
     rentalDeduction?: number;
     loanDeduction?: number;
+    otherDeduction?: number;
     createdAt?: Date;
     updatedAt?: Date;
   }[];
@@ -98,6 +99,7 @@ const UserSchema: Schema = new Schema(
         esiDeduction: { type: Number, default: 0 },
         rentalDeduction: { type: Number, default: 0 },
         loanDeduction: { type: Number, default: 0 },
+        otherDeduction: { type: Number, default: 0 },
         createdAt: { type: Date, default: Date.now },
         updatedAt: { type: Date, default: Date.now }
       }

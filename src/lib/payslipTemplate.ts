@@ -1,20 +1,39 @@
 import { format } from 'date-fns';
+import { resolvePayslipBreakdown } from '@/lib/salaryUtils';
 
 export function generatePayslipHtml(payroll: any, user: any, company: any) {
-  const monthName = format(new Date(payroll.year, payroll.month - 1), 'MMMM yyyy');
-  
-  const monthlySalary = payroll.monthlySalary || 0;
-  const basicSalary = payroll.basicSalary ?? Math.round(monthlySalary * 0.5);
-  const hraAllowance = payroll.hra ?? Math.round(monthlySalary * 0.15);
-  const otherAllowances = payroll.da ?? (monthlySalary - basicSalary - hraAllowance);
-  
-  const totalDeductions = payroll.deductionAmount ?? payroll.deductions ?? 0;
-  const esi = payroll.salaryDeductionsSnapshot?.esi || 0;
-  const rentalDeduction = payroll.salaryDeductionsSnapshot?.hra || 0;
-  const loan = payroll.salaryDeductionsSnapshot?.loan || 0;
-  
-  const lossOfPay = Math.max(0, totalDeductions - esi - rentalDeduction - loan);
-  const otherDeductions = lossOfPay + loan;
+  const monthDate = new Date(payroll.year, payroll.month - 1);
+  const monthName = format(monthDate, 'MMMM yyyy');
+
+  const {
+    daysInMonth,
+    basicSalary,
+    hraAllowance,
+    da,
+    bonus,
+    grossEarnings,
+    esi,
+    tds,
+    loan,
+    rental,
+    otherDeductions,
+    lossOfPay,
+    totalDeductions,
+    netPayable,
+    unpaidLeaveTaken,
+    paidLeaveTaken,
+    weekOff,
+    daysPaid,
+  } = resolvePayslipBreakdown(payroll, user);
+
+  const rawAccount = (user?.accountNumber || '').trim();
+  const maskedAccount = rawAccount.length > 4 ? '*********' + rawAccount.slice(-4) : (rawAccount || '-');
+
+  const formatAmount = (val: number | undefined | null) => (val != null ? Math.round(val).toString() : '0');
+
+  const companyName = company?.companyName || 'Truflow Solutions Private Limited';
+  const companyAddress = company?.address || 'S.F.No.617/2H2, Vadakku Thottam, L&T Road, Malumichampatti, Coimbatore, Tamil Nadu-641050';
+  const logoSrc = company?.logo || '/logo/truflow.png';
 
   return `
 <!DOCTYPE html>
@@ -22,150 +41,162 @@ export function generatePayslipHtml(payroll: any, user: any, company: any) {
 <head>
   <meta charset="UTF-8" />
   <title>Payslip - ${monthName}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
-    body { font-family: 'Inter', sans-serif; background: white; color: black; }
-    /* Mimic print styles from Tailwind */
-    .text-neutral-500 { color: #737373; }
-    .text-neutral-900 { color: #171717; }
-    .bg-neutral-50 { background-color: #fafafa; }
-    .bg-neutral-100 { background-color: #f5f5f5; }
-    .border-neutral-200 { border-color: #e5e5e5; }
-    .border-neutral-300 { border-color: #d4d4d4; }
-    .text-green-600 { color: #16a34a; }
-    .text-red-600 { color: #dc2626; }
-    .text-pink-600 { color: #db2777; }
-    .text-blue-600 { color: #2563eb; }
-    .text-blue-900 { color: #1e3a8a; }
-    .text-blue-700 { color: #1d4ed8; }
-    .bg-blue-50 { background-color: #eff6ff; }
-    .border-blue-100 { border-color: #dbeafe; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #fff; color: #000; padding: 24px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    
+    .header-box { margin-bottom: 16px; }
+    .logo-row { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+    .logo-img { height: 36px; max-width: 150px; object-fit: contain; }
+    .company-title { font-family: "Times New Roman", Times, serif; font-size: 22px; font-weight: bold; margin-bottom: 4px; text-align: center; }
+    .company-address { font-size: 11px; color: #222; max-width: 85%; margin: 0 auto; text-align: center; }
+
+    .payslip-box { border: 2px solid #000; width: 100%; border-collapse: collapse; }
+    .payslip-title { text-align: center; font-weight: bold; font-size: 13px; padding: 7px; border-bottom: 2px solid #000; }
+    
+    table.data-table { width: 100%; border-collapse: collapse; }
+    table.data-table td, table.data-table th { border: 1px solid #000; padding: 6px 8px; font-size: 12px; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .font-bold { font-weight: bold; }
+    
+    .border-b-2 { border-bottom: 2px solid #000 !important; }
+    .border-r { border-right: 1px solid #000 !important; }
+    
+    .footer-box { padding: 10px 12px; font-size: 11px; line-height: 1.45; border-top: 2px solid #000; }
+    .footer-indent { padding-left: 30px; margin: 2px 0; }
   </style>
 </head>
-<body class="p-8 max-w-4xl mx-auto">
-  <div class="space-y-8">
-    <div class="flex justify-between items-end border-b-2 border-neutral-200 pb-6">
-      <div>
-        <h1 class="text-3xl font-bold tracking-tight text-neutral-900">PAYSLIP</h1>
-        <p class="text-neutral-500 mt-1 font-bold">${monthName}</p>
-      </div>
-      <div class="text-right">
-        <h2 class="text-xl font-bold text-neutral-900">${company?.companyName || 'Company Name'}</h2>
-        <p class="text-sm font-bold text-neutral-500">${company?.address || 'Company Address'}</p>
-        <p class="text-sm font-bold text-neutral-500">${company?.email || 'email@company.com'} | ${company?.phone || 'Phone'}</p>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-2 gap-8">
-      <div class="bg-neutral-50 p-4 rounded-xl border border-neutral-200">
-        <h3 class="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-3">Employee Details</h3>
-        <div class="grid grid-cols-2 gap-y-2 text-sm">
-          <div class="text-neutral-500 font-bold">Employee ID:</div>
-          <div class="font-bold text-neutral-900">${user?.employeeId || '-'}</div>
-          <div class="text-neutral-500 font-bold">Name:</div>
-          <div class="font-bold text-neutral-900">${user?.name || '-'}</div>
-          <div class="text-neutral-500 font-bold">Department:</div>
-          <div class="font-bold text-neutral-900">${user?.department || '-'}</div>
-          <div class="text-neutral-500 font-bold">Designation:</div>
-          <div class="font-bold text-neutral-900">${user?.designation || '-'}</div>
-        </div>
-      </div>
-      <div class="bg-neutral-50 p-4 rounded-xl border border-neutral-200">
-        <h3 class="text-sm font-bold text-neutral-900 uppercase tracking-wider mb-3">Bank Details</h3>
-        <div class="grid grid-cols-2 gap-y-2 text-sm">
-          <div class="text-neutral-500 font-bold">Bank Name:</div>
-          <div class="font-bold text-neutral-900">${user?.bankName || '-'}</div>
-          <div class="text-neutral-500 font-bold">Account No:</div>
-          <div class="font-bold text-neutral-900">${user?.accountNumber || '-'}</div>
-          <div class="text-neutral-500 font-bold">IFSC Code:</div>
-          <div class="font-bold text-neutral-900">${user?.ifscCode || '-'}</div>
-        </div>
+<body>
+  <div class="container">
+    <div class="header-box">
+      ${logoSrc ? `
+      <div class="logo-row">
+        <img src="${logoSrc}" alt="Logo" class="logo-img" />
+      </div>` : ''}
+      <div class="company-text">
+        <h1 class="company-title">${companyName}</h1>
+        <p class="company-address">${companyAddress}</p>
       </div>
     </div>
 
-    <div class="bg-neutral-50 p-4 rounded-xl border border-neutral-200 grid grid-cols-6 text-sm">
-      <div class="text-center px-2">
-        <div class="text-neutral-500 font-bold mb-1">Calendar Days</div>
-        <div class="font-bold text-lg text-neutral-900">${payroll.totalCalendarDays || '-'}</div>
+    <div class="payslip-box">
+      <div class="payslip-title">
+        Payslip For The Month Of ${monthName}
       </div>
-      <div class="text-center px-2 border-l border-neutral-200">
-        <div class="text-neutral-500 font-bold mb-1">Working Days</div>
-        <div class="font-bold text-lg text-neutral-900">${payroll.totalWorkingDays || 0}</div>
-      </div>
-      <div class="text-center px-2 border-l border-neutral-200">
-        <div class="text-neutral-500 font-bold mb-1">Present</div>
-        <div class="font-bold text-lg text-green-600">${payroll.presentDays || 0}</div>
-      </div>
-      <div class="text-center px-2 border-l border-neutral-200">
-        <div class="text-neutral-500 font-bold mb-1">Absent</div>
-        <div class="font-bold text-lg text-red-600">${payroll.absentDays || 0}</div>
-      </div>
-      <div class="text-center px-2 border-l border-neutral-200">
-        <div class="text-neutral-500 font-bold mb-1">Leave</div>
-        <div class="font-bold text-lg text-pink-600">${payroll.leaveDays || 0}</div>
-      </div>
-      <div class="text-center px-2 border-l border-neutral-200">
-        <div class="text-neutral-500 font-bold mb-1">Weekly Offs</div>
-        <div class="font-bold text-lg text-blue-600">${payroll.weeklyOffDays || 0}</div>
-      </div>
-    </div>
 
-    <div class="overflow-hidden">
-      <table class="min-w-full w-full text-sm text-left">
+      <table class="data-table">
+        <tbody>
+          <tr>
+            <td style="width: 25%;">Employee Name</td>
+            <td style="width: 25%;">${user?.name || '-'}</td>
+            <td style="width: 25%;">Job Location</td>
+            <td style="width: 25%;" class="text-right">${user?.location || user?.address || 'Coimbatore'}</td>
+          </tr>
+          <tr>
+            <td>Employee ID</td>
+            <td>${user?.employeeId || '-'}</td>
+            <td>No of Days in Month</td>
+            <td class="text-right">${daysInMonth}</td>
+          </tr>
+          <tr>
+            <td>Designation</td>
+            <td>${user?.designation || '-'}</td>
+            <td>Un-Paid Leave Taken</td>
+            <td class="text-right">${unpaidLeaveTaken}</td>
+          </tr>
+          <tr>
+            <td>Department</td>
+            <td>${user?.department || '-'}</td>
+            <td>Paid Leave Taken</td>
+            <td class="text-right">${paidLeaveTaken}</td>
+          </tr>
+          <tr>
+            <td>Date of Joining</td>
+            <td>${user?.joiningDate ? format(new Date(user.joiningDate), 'dd.MM.yyyy') : '-'}</td>
+            <td>Week Off</td>
+            <td class="text-right">${weekOff}</td>
+          </tr>
+          <tr>
+            <td>Bank Name</td>
+            <td>${user?.bankName || '-'}</td>
+            <td>Days Paid</td>
+            <td class="text-right">${daysPaid}</td>
+          </tr>
+          <tr class="border-b-2">
+            <td>A/c Number</td>
+            <td>${maskedAccount}</td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="data-table">
         <thead>
-          <tr class="bg-neutral-100 border-y border-neutral-200">
-            <th class="px-4 py-3 font-bold text-neutral-900">Earnings</th>
-            <th class="px-4 py-3 text-right font-bold text-neutral-900">Amount</th>
-            <th class="px-4 py-3 font-bold text-neutral-900">Deductions</th>
-            <th class="px-4 py-3 text-right font-bold text-neutral-900">Amount</th>
+          <tr class="border-b-2">
+            <th colspan="2" class="text-center font-bold border-r" style="width: 50%;">Earnings</th>
+            <th colspan="2" class="text-center font-bold" style="width: 50%;">Deductions</th>
           </tr>
         </thead>
         <tbody>
-          <tr class="border-b border-neutral-200">
-            <td class="px-4 py-3 font-bold text-neutral-900">Basic Salary</td>
-            <td class="px-4 py-3 text-right font-bold text-neutral-900">₹${basicSalary.toLocaleString()}</td>
-            <td class="px-4 py-3 font-bold text-neutral-900">TDS</td>
-            <td class="px-4 py-3 text-right font-bold text-red-600">-₹0</td>
+          <tr>
+            <td style="width: 35%;">Basic Salary</td>
+            <td style="width: 15%;" class="text-right border-r">${formatAmount(basicSalary)}</td>
+            <td style="width: 35%;">ESI</td>
+            <td style="width: 15%;" class="text-right">${formatAmount(esi)}</td>
           </tr>
-          <tr class="border-b border-neutral-200">
-            <td class="px-4 py-3 font-bold text-neutral-900">HRA</td>
-            <td class="px-4 py-3 text-right font-bold text-neutral-900">₹${hraAllowance.toLocaleString()}</td>
-            <td class="px-4 py-3 font-bold text-neutral-900">ESI</td>
-            <td class="px-4 py-3 text-right font-bold text-red-600">-₹${esi.toLocaleString()}</td>
+          <tr>
+            <td>HRA</td>
+            <td class="text-right border-r">${formatAmount(hraAllowance)}</td>
+            <td>TDS</td>
+            <td class="text-right">${formatAmount(tds)}</td>
           </tr>
-          <tr class="border-b border-neutral-200">
-            <td class="px-4 py-3 font-bold text-neutral-900">Other Allowances</td>
-            <td class="px-4 py-3 text-right font-bold text-neutral-900">₹${otherAllowances.toLocaleString()}</td>
-            <td class="px-4 py-3 font-bold text-neutral-900">Rental Deduction</td>
-            <td class="px-4 py-3 text-right font-bold text-red-600">-₹${rentalDeduction.toLocaleString()}</td>
+          <tr>
+            <td>DA</td>
+            <td class="text-right border-r">${formatAmount(da)}</td>
+            <td>Company Loan Deductions</td>
+            <td class="text-right">${formatAmount(loan)}</td>
           </tr>
-          <tr class="border-b border-neutral-200">
-            <td class="px-4 py-3 font-bold text-neutral-900">Bonus</td>
-            <td class="px-4 py-3 text-right font-bold text-neutral-900">₹0</td>
-            <td class="px-4 py-3 font-bold text-neutral-900">Other Deduction</td>
-            <td class="px-4 py-3 text-right font-bold text-red-600">-₹${otherDeductions.toLocaleString()}</td>
+          <tr>
+            <td>Bonus</td>
+            <td class="text-right border-r">${formatAmount(bonus)}</td>
+            <td>Rental Deductions</td>
+            <td class="text-right">${formatAmount(rental)}</td>
+          </tr>
+          <tr>
+            <td class="font-bold">Gross Earnings</td>
+            <td class="text-right font-bold border-r">${formatAmount(grossEarnings)}</td>
+            <td>Other Deductions</td>
+            <td class="text-right">${formatAmount(otherDeductions)}</td>
+          </tr>
+          <tr>
+            <td></td>
+            <td class="border-r"></td>
+            <td>Loss of Pay</td>
+            <td class="text-right">${formatAmount(lossOfPay)}</td>
+          </tr>
+          <tr>
+            <td></td>
+            <td class="border-r"></td>
+            <td class="font-bold">Total Deductions</td>
+            <td class="text-right font-bold">${formatAmount(totalDeductions)}</td>
+          </tr>
+          <tr>
+            <td></td>
+            <td class="border-r"></td>
+            <td class="font-bold">Net Payable</td>
+            <td class="text-right font-bold">${formatAmount(netPayable)}</td>
           </tr>
         </tbody>
-        <tfoot>
-          <tr class="bg-neutral-50 font-bold">
-            <td class="px-4 py-3 text-neutral-900">Total Earnings</td>
-            <td class="px-4 py-3 text-right text-neutral-900">₹${(payroll.grossSalary || payroll.monthlySalary || 0).toLocaleString()}</td>
-            <td class="px-4 py-3 text-neutral-900">Total Deductions</td>
-            <td class="px-4 py-3 text-right text-red-600">-₹${((payroll.deductionAmount ?? payroll.deductions) || 0).toLocaleString()}</td>
-          </tr>
-        </tfoot>
       </table>
-    </div>
 
-    <div class="flex justify-between items-center bg-blue-50 p-6 rounded-xl border border-blue-100 mt-6">
-      <div class="text-lg text-blue-900 font-bold">Net Salary Payable</div>
-      <div class="text-3xl font-black text-blue-700">₹${(payroll.netSalary || payroll.finalSalary || 0).toLocaleString()}</div>
-    </div>
-
-    <div class="pt-16 pb-8 flex justify-between items-center px-12 text-sm text-neutral-500 font-bold">
-      <div class="text-center border-t border-neutral-300 pt-2 w-48">Employer Signature</div>
-      <div class="text-center border-t border-neutral-300 pt-2 w-48">Employee Signature</div>
+      <div class="footer-box">
+        <div><strong>Note:</strong> This is a computer-generated payslip and does not require a physical signature.</div>
+        <div class="footer-indent">For any queries or discrepancies regarding this payslip, please contact the HR Department.</div>
+        <div><strong>Confidential:</strong> This document contains confidential employee salary information.</div>
+      </div>
     </div>
   </div>
 </body>

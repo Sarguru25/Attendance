@@ -25,6 +25,8 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
   const [bonus, setBonus] = useState('0');
   const [esiDeduction, setEsiDeduction] = useState('0');
   const [rentalDeduction, setRentalDeduction] = useState('0');
+  const [loanDeduction, setLoanDeduction] = useState('0');
+  const [otherDeduction, setOtherDeduction] = useState('0');
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,8 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
     setBonus('0');
     setEsiDeduction('0');
     setRentalDeduction('0');
+    setLoanDeduction('0');
+    setOtherDeduction('0');
     setIsAdding(false);
     setEditingTimelineId(null);
     setError(null);
@@ -93,6 +97,8 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
     setBonus(String(item.bonus || 0));
     setEsiDeduction(String(item.esiDeduction || 0));
     setRentalDeduction(String(item.rentalDeduction || 0));
+    setLoanDeduction(String(item.loanDeduction || 0));
+    setOtherDeduction(String(item.otherDeduction || 0));
   };
 
   const handleStartClone = (item: ITimelineDisplayItem) => {
@@ -109,6 +115,8 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
     setBonus(String(item.bonus || 0));
     setEsiDeduction(String(item.esiDeduction || 0));
     setRentalDeduction(String(item.rentalDeduction || 0));
+    setLoanDeduction(String(item.loanDeduction || 0));
+    setOtherDeduction(String(item.otherDeduction || 0));
     setSuccess('Cloned timeline components into new entry form. Select an Effective Date to save.');
   };
 
@@ -139,7 +147,9 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
         da: Number(da) || (salaryNum - (Number(basicSalary) || 0) - (Number(hra) || 0)),
         bonus: Number(bonus) || 0,
         esiDeduction: Number(esiDeduction) || 0,
-        rentalDeduction: Number(rentalDeduction) || 0
+        rentalDeduction: Number(rentalDeduction) || 0,
+        loanDeduction: Number(loanDeduction) || 0,
+        otherDeduction: Number(otherDeduction) || 0
       };
 
       if (editingTimelineId) {
@@ -354,7 +364,7 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
                 <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
                   Standard Deductions Config
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-muted-foreground mb-1">ESI Deduction (₹)</label>
                     <input
@@ -371,6 +381,24 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
                       className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
                       value={rentalDeduction}
                       onChange={(e) => setRentalDeduction(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-1">Company Loan Deduction (₹)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
+                      value={loanDeduction}
+                      onChange={(e) => setLoanDeduction(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-1">Other Deduction (₹)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-background border border-border rounded-lg text-foreground px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-1 focus:ring-primary"
+                      value={otherDeduction}
+                      onChange={(e) => setOtherDeduction(e.target.value)}
                     />
                   </div>
                 </div>
@@ -451,6 +479,16 @@ export default function SalaryTimelineManager({ user, onClose, onUpdate }: Salar
                             BS: ₹{item.basicSalary.toLocaleString()} | HRA: ₹{item.hra.toLocaleString()} | DA: ₹{item.da.toLocaleString()}
                           </div>
                           {item.bonus ? <div className="text-[10px] text-emerald-500 font-bold">Bonus: ₹{item.bonus.toLocaleString()}</div> : null}
+                          {(item.esiDeduction > 0 || item.rentalDeduction > 0 || item.loanDeduction > 0 || item.otherDeduction > 0) && (
+                            <div className="text-[10px] text-destructive font-medium mt-0.5">
+                              Ded: {[
+                                item.esiDeduction > 0 ? `ESI: ₹${item.esiDeduction.toLocaleString()}` : null,
+                                item.rentalDeduction > 0 ? `Rent: ₹${item.rentalDeduction.toLocaleString()}` : null,
+                                item.loanDeduction > 0 ? `Loan: ₹${item.loanDeduction.toLocaleString()}` : null,
+                                item.otherDeduction > 0 ? `Other: ₹${item.otherDeduction.toLocaleString()}` : null
+                              ].filter(Boolean).join(' | ')}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-sm font-bold text-foreground text-right whitespace-nowrap">
                           ₹{item.monthlySalary.toLocaleString('en-IN')}

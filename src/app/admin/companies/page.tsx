@@ -2,14 +2,22 @@
 
 import React, { useState } from 'react';
 import useSWR from 'swr';
-import { Building2, Plus, Edit2, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Building2, Plus, Edit2, Loader2, CheckCircle2, XCircle, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
-import Image from 'next/image';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
+const DEFAULT_LOGOS = [
+  { name: 'truflow', filename: 'truflow.png', path: '/logo/truflow.png' },
+  { name: 'zeetork', filename: 'zeetork.png', path: '/logo/zeetork.png' },
+];
+
 export default function CompaniesPage() {
-  const { data, error, mutate, isLoading } = useSWR('/api/admin/companies', fetcher);
+  const { data, mutate, isLoading } = useSWR('/api/admin/companies', fetcher);
+  const { data: logosData } = useSWR('/api/admin/companies/logos', fetcher);
+
+  const availableLogos = logosData?.logos?.length ? logosData.logos : DEFAULT_LOGOS;
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,7 +51,7 @@ export default function CompaniesPage() {
         email: '',
         phone: '',
         address: '',
-        logo: '',
+        logo: availableLogos[0]?.path || '/logo/truflow.png',
         status: true,
       });
     }
@@ -94,7 +102,7 @@ export default function CompaniesPage() {
             <Building2 className="w-6 h-6 text-primary" />
             Company Management
           </h1>
-          <p className="text-muted-foreground mt-1">Manage multiple organizations and branches</p>
+          <p className="text-muted-foreground mt-1">Manage multiple organizations, logos, and branch addresses</p>
         </div>
         <button
           onClick={() => openModal()}
@@ -113,6 +121,7 @@ export default function CompaniesPage() {
                 <th className="px-6 py-4 font-bold">Company</th>
                 <th className="px-6 py-4 font-bold">Code</th>
                 <th className="px-6 py-4 font-bold">Contact</th>
+                <th className="px-6 py-4 font-bold">Address</th>
                 <th className="px-6 py-4 font-bold">Status</th>
                 <th className="px-6 py-4 font-bold">Added On</th>
                 <th className="px-6 py-4 font-bold text-right">Actions</th>
@@ -121,13 +130,13 @@ export default function CompaniesPage() {
             <tbody className="divide-y divide-border">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground font-bold">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground font-bold">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                   </td>
                 </tr>
               ) : data?.companies?.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground font-bold">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground font-bold">
                     No companies found. Create one to get started.
                   </td>
                 </tr>
@@ -137,9 +146,12 @@ export default function CompaniesPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         {company.logo ? (
-                          <Image src={company.logo} alt="" width={32} height={32} className="rounded-md object-cover bg-muted" />
+                          <div className="w-12 h-9 rounded-md bg-white border border-border flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-xs">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={company.logo} alt="" className="max-h-full max-w-full object-contain" />
+                          </div>
                         ) : (
-                          <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
+                          <div className="w-12 h-9 rounded-md bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border border-border shrink-0">
                             {company.companyCode}
                           </div>
                         )}
@@ -149,7 +161,16 @@ export default function CompaniesPage() {
                     <td className="px-6 py-4 font-mono font-bold text-muted-foreground">{company.companyCode}</td>
                     <td className="px-6 py-4">
                       <div className="text-sm font-bold text-card-foreground">{company.email}</div>
-                      <div className="text-xs font-bold text-muted-foreground">{company.phone}</div>
+                      <div className="text-xs font-bold text-muted-foreground">{company.phone || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 max-w-xs">
+                      {company.address ? (
+                        <div className="text-xs text-muted-foreground line-clamp-2" title={company.address}>
+                          {company.address}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">No address set</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       {company.status ? (
@@ -168,7 +189,11 @@ export default function CompaniesPage() {
                       {company.createdAt ? format(new Date(company.createdAt), 'MMM d, yyyy') : 'N/A'}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => openModal(company)} className="p-2 text-muted-foreground hover:text-primary transition-colors">
+                      <button 
+                        onClick={() => openModal(company)} 
+                        className="p-2 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                        title="Edit Company"
+                      >
                         <Edit2 className="w-4 h-4" />
                       </button>
                     </td>
@@ -182,8 +207,8 @@ export default function CompaniesPage() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 shadow-xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-6">
+          <div className="bg-card border border-border rounded-2xl max-w-lg w-full p-6 shadow-xl animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6 border-b border-border pb-3">
               <h3 className="text-lg font-bold text-card-foreground">{editingCompany ? 'Edit Company' : 'Add New Company'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-muted-foreground hover:text-foreground">
                 <XCircle className="w-5 h-5" />
@@ -192,57 +217,105 @@ export default function CompaniesPage() {
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-bold text-card-foreground mb-1">Company Name</label>
+                <label className="block text-sm font-bold text-card-foreground mb-1">Company Name *</label>
                 <input
                   type="text"
                   required
                   value={formData.companyName}
                   onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
                   className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
-                  placeholder="e.g. Acme Corp"
+                  placeholder="e.g. Truflow Solutions Private Limited"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-bold text-card-foreground mb-1">Company Code</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.companyCode}
-                  onChange={(e) => setFormData({ ...formData, companyCode: e.target.value })}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
-                  placeholder="e.g. ACME"
-                />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-card-foreground mb-1">Company Code *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.companyCode}
+                    onChange={(e) => setFormData({ ...formData, companyCode: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    placeholder="e.g. TRUFLOW"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-card-foreground mb-1">Phone</label>
+                  <input
+                    type="text"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                    placeholder="+91 9876543210"
+                  />
+                </div>
               </div>
+
               <div>
-                <label className="block text-sm font-bold text-card-foreground mb-1">Email</label>
+                <label className="block text-sm font-bold text-card-foreground mb-1">Email *</label>
                 <input
                   type="email"
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                  placeholder="contact@company.com"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-card-foreground mb-1">Phone (Optional)</label>
-                  <input
-                    type="text"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-card-foreground mb-1">Logo URL (Optional)</label>
-                  <input
-                    type="text"
+
+              {/* Company Address Field */}
+              <div>
+                <label className="block text-sm font-bold text-card-foreground mb-1 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  Company Address (Used in Payslip)
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-foreground font-medium focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-sm"
+                  placeholder="e.g. S.F.No.617/2H2, Vadakku Thottam, L&T Road, Malumichampatti, Coimbatore, Tamil Nadu-641050"
+                />
+              </div>
+
+              {/* Logo Selection Dropdown from public/logo */}
+              <div>
+                <label className="block text-sm font-bold text-card-foreground mb-1">
+                  Company Logo (From public/logo)
+                </label>
+                <div className="flex items-center gap-3">
+                  <select
                     value={formData.logo}
                     onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
-                    placeholder="/uploads/logo.png"
-                  />
+                    className="flex-1 px-3 py-2 bg-background border border-border rounded-xl min-h-[44px] text-foreground font-bold focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                  >
+                    <option value="">No logo</option>
+                    {availableLogos.map((l: any) => (
+                      <option key={l.path} value={l.path}>
+                        {l.filename || l.name} ({l.path})
+                      </option>
+                    ))}
+                  </select>
+
+                  {formData.logo ? (
+                    <div className="w-20 h-11 rounded-lg border border-border bg-white flex items-center justify-center p-1 shrink-0 shadow-sm overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={formData.logo}
+                        alt="Logo preview"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-20 h-11 rounded-lg border border-dashed border-border bg-muted flex items-center justify-center text-[10px] text-muted-foreground shrink-0">
+                      No Logo
+                    </div>
+                  )}
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Logos are populated from the <code className="text-xs bg-muted px-1 py-0.5 rounded">public/logo</code> directory.
+                </p>
               </div>
 
               <div className="flex items-center gap-2 pt-2">
@@ -258,7 +331,7 @@ export default function CompaniesPage() {
                 </label>
               </div>
 
-              <div className="pt-4 flex gap-3">
+              <div className="pt-4 flex gap-3 border-t border-border">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
@@ -281,3 +354,4 @@ export default function CompaniesPage() {
     </div>
   );
 }
+
