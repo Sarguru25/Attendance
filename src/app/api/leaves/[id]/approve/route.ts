@@ -34,33 +34,40 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'You do not have permission to approve this leave' }, { status: 403 });
     }
 
-    const previousStatus = leave.status;
-    leave.status = status;
-    leave.approvedBy = session.user.id as any;
-    await leave.save({ bypassTenant: true } as any);
+    const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
+    const result = await LeaveBalanceEngine.processLeaveStatusUpdate({
+      leaveId: id,
+      targetStatus: status,
+      approverId: session.user.id
+    });
 
-    const { syncLeaveToAttendance } = await import('@/lib/halfDayUtils');
-    await syncLeaveToAttendance(leave, status === 'approved');
+    const updatedLeave = result.leave;
 
     // Dynamically import ApprovalAuditLog to avoid circular dependencies if any
     const ApprovalAuditLog = (await import('@/models/ApprovalAuditLog')).default;
     await ApprovalAuditLog.create({
-      requestId: leave._id,
+      requestId: updatedLeave._id,
       requestType: 'LEAVE',
       action: status,
       performedBy: session.user.id,
-      oldValue: previousStatus,
+      oldValue: result.previousStatus,
       newValue: status
     });
 
+    const recipientUserId = updatedLeave.userId._id || updatedLeave.userId;
+    let leaveDesc = updatedLeave.leaveType;
+    if (updatedLeave.duration === 'half_day') {
+      leaveDesc = `Half Day (${updatedLeave.halfDaySession === 'first_half' ? 'First Half' : 'Second Half'}) ${updatedLeave.leaveType}`;
+    }
+
     await Notification.create({
-      recipientId: leave.userId._id,
+      recipientId: recipientUserId,
       type: 'LEAVE_UPDATE',
-      message: `Your ${leave.leaveType} leave request has been ${status.toLowerCase()}.`,
+      message: `Your ${leaveDesc} request has been ${status.toLowerCase()}.`,
       link: '/employee/leaves',
     });
 
-    return NextResponse.json({ message: `Leave ${status.toLowerCase()}`, leave });
+    return NextResponse.json({ message: `Leave ${status.toLowerCase()}`, leave: updatedLeave });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

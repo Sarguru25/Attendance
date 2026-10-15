@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: eligibility.reason }, { status: 400 });
     }
 
-    if (leaveType === 'Restricted Holiday') {
+    if (leaveType === 'Restricted Holiday' || leaveType === 'Restricted Leave') {
       const Holiday = (await import('@/models/Holiday')).default;
       
       // We need to check if every day in the range is a restricted holiday
@@ -114,13 +114,14 @@ export async function POST(req: NextRequest) {
       }
 
       for (const day of days) {
-        const dayStart = new Date(day);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(day);
-        dayEnd.setHours(23, 59, 59, 999);
+        const utcStart = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 0, 0, 0, 0));
+        const utcEnd = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 23, 59, 59, 999));
 
         const isRH = await Holiday.exists({
-          date: { $gte: dayStart, $lte: dayEnd },
+          date: { 
+            $gte: new Date(utcStart.getTime() - 14 * 3600 * 1000), 
+            $lte: new Date(utcEnd.getTime() + 14 * 3600 * 1000) 
+          },
           holidayType: 'restricted'
         });
         if (!isRH) {

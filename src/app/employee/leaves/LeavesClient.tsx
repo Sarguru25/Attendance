@@ -90,17 +90,26 @@ export default function EmployeeLeavesClient() {
   const balanceData = data?.balance;
   
   // Calculate total taken days across all paid leave types
-  const takenDays = balanceData ? (balanceData.casualLeave.taken + balanceData.sickLeave.taken + balanceData.restrictedLeave.taken) : 0;
+  const takenDays = balanceData ? (
+    (balanceData.casualLeave?.taken || 0) + 
+    (balanceData.sickLeave?.taken || 0) + 
+    (balanceData.restrictedLeave?.taken || 0) +
+    (balanceData.compensatoryOff?.taken || 0)
+  ) : 0;
   
   // Calculate total available balance across all paid leave types
   const availableBalance = balanceData ? (
-    balanceData.casualLeave.available + 
-    balanceData.sickLeave.available + 
-    balanceData.restrictedLeave.available + 
-    balanceData.compensatoryOff.available
+    (balanceData.casualLeave?.available || 0) + 
+    (balanceData.sickLeave?.available || 0) + 
+    (balanceData.restrictedLeave?.available || 0) + 
+    (balanceData.compensatoryOff?.available || 0)
   ) : 0;
   
-  const totalAllowance = balanceData ? (balanceData.casualLeave.total + balanceData.sickLeave.total + balanceData.restrictedLeave.total) : 0;
+  const totalAllowance = balanceData ? (
+    (balanceData.casualLeave?.total || 0) + 
+    (balanceData.sickLeave?.total || 0) + 
+    (balanceData.restrictedLeave?.total || 0)
+  ) : 0;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -131,35 +140,35 @@ export default function EmployeeLeavesClient() {
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-primary/50 transition-colors group">
           <div className="text-sm text-muted-foreground font-medium mb-2">Casual Leave</div>
           <div className="flex justify-between items-baseline">
-            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.casualLeave.available ?? '-'}</div>
-            <div className="text-xs text-muted-foreground">Taken: {balanceData?.casualLeave.taken ?? '-'}</div>
+            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.casualLeave?.available ?? '-'}</div>
+            <div className="text-xs text-muted-foreground">Taken: {balanceData?.casualLeave?.taken ?? '-'}</div>
           </div>
         </div>
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-primary/50 transition-colors group">
           <div className="text-sm text-muted-foreground font-medium mb-2">Sick Leave</div>
           <div className="flex justify-between items-baseline">
-            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.sickLeave.available ?? '-'}</div>
-            <div className="text-xs text-muted-foreground">Taken: {balanceData?.sickLeave.taken ?? '-'}</div>
+            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.sickLeave?.available ?? '-'}</div>
+            <div className="text-xs text-muted-foreground">Taken: {balanceData?.sickLeave?.taken ?? '-'}</div>
           </div>
         </div>
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-primary/50 transition-colors group">
           <div className="text-sm text-muted-foreground font-medium mb-2">Restricted Holiday</div>
           <div className="flex justify-between items-baseline">
-            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.restrictedLeave.available ?? '-'}</div>
-            <div className="text-xs text-muted-foreground">Taken: {balanceData?.restrictedLeave.taken ?? '-'}</div>
+            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.restrictedLeave?.available ?? '-'}</div>
+            <div className="text-xs text-muted-foreground">Taken: {balanceData?.restrictedLeave?.taken ?? '-'}</div>
           </div>
         </div>
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-primary/50 transition-colors group">
           <div className="text-sm text-muted-foreground font-medium mb-2">Compensatory Off</div>
           <div className="flex justify-between items-baseline">
-            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.compensatoryOff.available ?? '-'}</div>
-            <div className="text-xs text-muted-foreground">Taken: {balanceData?.compensatoryOff.taken ?? '-'}</div>
+            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.compensatoryOff?.available ?? '-'}</div>
+            <div className="text-xs text-muted-foreground">Taken: {balanceData?.compensatoryOff?.taken ?? '-'}</div>
           </div>
         </div>
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between hover:border-primary/50 transition-colors group">
           <div className="text-sm text-muted-foreground font-medium mb-2">Leave Without Pay</div>
           <div className="flex justify-between items-baseline">
-            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.leaveWithoutPay.taken ?? '-'}</div>
+            <div className="text-2xl font-bold text-card-foreground group-hover:text-primary transition-colors">{balanceData?.leaveWithoutPay?.taken ?? '-'}</div>
             <div className="text-xs text-muted-foreground">Taken</div>
           </div>
         </div>

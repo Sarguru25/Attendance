@@ -89,17 +89,22 @@ export async function POST(req: NextRequest) {
         request.status = 'Rejected';
         request.approvedBy = userId;
       }
+    } else if (requestType === 'LEAVE') {
+      const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
+      const leaveResult = await LeaveBalanceEngine.processLeaveStatusUpdate({
+        leaveId: id,
+        targetStatus: status,
+        approverId: userId
+      });
+      request = leaveResult.leave;
     } else {
       request.status = status;
-      if (requestType === 'LEAVE') {
-        request.approvedBy = userId;
-      } else if (status === 'approved' && (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION')) {
+      if (status === 'approved' && (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION')) {
         if (finalCheckIn) request.requestedCheckIn = new Date(finalCheckIn);
         if (finalCheckOut) request.requestedCheckOut = new Date(finalCheckOut);
       }
+      await request.save({ bypassTenant: true } as any);
     }
-
-    await request.save({ bypassTenant: true } as any);
 
     if (requestType === 'PERMISSION') {
       const { recalculateAttendanceForUserAndDate } = await import('@/lib/attendanceUtils');
@@ -108,75 +113,7 @@ export async function POST(req: NextRequest) {
 
     // If approved, handle side effects
     if (status === 'approved') {
-      if (requestType === 'LEAVE') {
-        const { syncLeaveToAttendance } = await import('@/lib/halfDayUtils');
-        await syncLeaveToAttendance(request, status === 'approved');
-
-        const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');
-        await LeaveBalanceEngine.syncLeaveBalance(request.userId.toString());
-        const user = await User.findById(request.userId, null, { bypassTenant: true });
-
-        if (user && user.leaveBalance) {
-          if (request.leaveType === 'Casual Leave') {
-            user.leaveBalance.casualLeave.taken += request.numberOfDays;
-            user.leaveBalance.casualLeave.available -= request.numberOfDays;
-          } else if (request.leaveType === 'Sick Leave') {
-            user.leaveBalance.sickLeave.taken += request.numberOfDays;
-            user.leaveBalance.sickLeave.available -= request.numberOfDays;
-          } else if (request.leaveType === 'Restricted Holiday') {
-            user.leaveBalance.restrictedLeave.taken += request.numberOfDays;
-            user.leaveBalance.restrictedLeave.available -= request.numberOfDays;
-          } else if (request.leaveType === 'Maternity Leave') {
-            user.leaveBalance.maternityLeave.taken += request.numberOfDays;
-            user.leaveBalance.maternityLeave.available -= request.numberOfDays;
-          } else if (request.leaveType === 'Paternity Leave') {
-            user.leaveBalance.paternityLeave.taken += request.numberOfDays;
-            user.leaveBalance.paternityLeave.available -= request.numberOfDays;
-          } else if (request.leaveType === 'Leave Without Pay') {
-            user.leaveBalance.leaveWithoutPay.taken += request.numberOfDays;
-          } else if (request.leaveType === 'Compensatory Off') {
-            const CompOffCredit = (await import('@/models/CompOffCredit')).default;
-            const credits = await CompOffCredit.find({
-              $or: [
-                { employeeId: request.userId },
-                { employeeId: request.userId.toString() }
-              ],
-              isUsed: false
-            }, null, { bypassTenant: true }).sort({ earnedDate: 1 });
-
-            let needed = request.numberOfDays;
-            for (const credit of credits) {
-              if (needed <= 0) break;
-              const cVal = credit.credits !== undefined ? credit.credits : 1;
-              if (cVal <= needed) {
-                credit.isUsed = true;
-                credit.usedAgainstLeave = request._id;
-                await credit.save({ bypassTenant: true } as any);
-                needed = Math.round((needed - cVal) * 100) / 100;
-              } else {
-                credit.credits = Math.round((cVal - needed) * 100) / 100;
-                await credit.save({ bypassTenant: true } as any);
-                await CompOffCredit.create({
-                  employeeId: credit.employeeId,
-                  companyId: credit.companyId,
-                  attendanceDate: credit.attendanceDate,
-                  earnedDate: credit.earnedDate,
-                  availableFromDate: credit.availableFromDate,
-                  expiryDate: credit.expiryDate,
-                  isUsed: true,
-                  credits: needed,
-                  usedAgainstLeave: request._id,
-                });
-                needed = 0;
-              }
-            }
-            user.leaveBalance.compensatoryOff.taken = (user.leaveBalance.compensatoryOff.taken || 0) + request.numberOfDays;
-            user.leaveBalance.compensatoryOff.available = Math.max(0, (user.leaveBalance.compensatoryOff.available || 0) - request.numberOfDays);
-          }
-          user.markModified('leaveBalance');
-          await user.save({ bypassTenant: true } as any);
-        }
-      } else if (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION') {
+      if (requestType === 'MISS_PUNCH' || requestType === 'ATTENDANCE_CORRECTION') {
         let attendance;
 
         if (requestType === 'MISS_PUNCH') {
