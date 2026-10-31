@@ -1,13 +1,63 @@
+
+```
+attendance
+├─ README.md
+├─ letters
+│  ├─ Internship_completion_letter.html
+│  ├─ bonus_letter.html
+│  ├─ emp_comfirmation_with_salary_hike.html
+│  ├─ emp_comfirmation_without_salary_hike.html
+│  ├─ salary_increment_letter.html
+│  ├─ seal-TF.png
+│  ├─ seal-ZT.png
+│  └─ seal.png
 ├─ next.config.ts
 ├─ package-lock.json
 ├─ package.json
 ├─ postcss.config.mjs
 ├─ public
+│  ├─ TF.png
 │  ├─ TF_logo.png
-│  ├─ TF_logo2.png
-│  └─ manifest.webmanifest
+│  ├─ ZT_logo.png
+│  ├─ firebase-messaging-sw.js
+│  ├─ font
+│  │  ├─ Allura
+│  │  │  ├─ Allura-Regular.ttf
+│  │  │  └─ OFL.txt
+│  │  └─ baguet-script
+│  │     ├─ Melvastype - Baguet Script Bold Italic.otf
+│  │     ├─ Melvastype - Baguet Script Bold.otf
+│  │     ├─ Melvastype - Baguet Script Italic.otf
+│  │     ├─ Melvastype - Baguet Script Regular.otf
+│  │     ├─ Melvastype - Baguet Script Thin Italic.otf
+│  │     └─ Melvastype - Baguet Script Thin.otf
+│  ├─ logo
+│  │  ├─ truflow.png
+│  │  └─ zeetork.png
+│  ├─ manifest.webmanifest
+│  ├─ policy
+│  │  ├─ ADMINISTRATION POLICY.pdf
+│  │  ├─ ATTENDANCE POLICY.pdf
+│  │  ├─ EMPLOYEE EXIT PROCEDURE.pdf
+│  │  ├─ EMPLOYEE JOINING PROCEDURE.pdf
+│  │  ├─ EMPLOYEE TRAVEL POLICY.pdf
+│  │  └─ OFFICE VEHICLE USAGE.pdf
+│  ├─ seal-TF.png
+│  └─ seal-ZT.png
 ├─ resources
 │  └─ logo.png
+├─ scripts
+│  ├─ analyze_and_correct_attendance.ts
+│  ├─ employee_data.txt
+│  ├─ firebase.txt
+│  ├─ inspect_records.ts
+│  ├─ migrate_sessions.ts
+│  ├─ recover_attendance_hours.ts
+│  ├─ seed
+│  │  └─ seed.js
+│  ├─ test_attendance_permissions.ts
+│  ├─ transfer_employee_company.ts
+│  └─ workdrive_file_upload.js
 ├─ src
 │  ├─ app
 │  │  ├─ admin
@@ -24,6 +74,7 @@
 │  │  │  ├─ companies
 │  │  │  │  └─ page.tsx
 │  │  │  ├─ dashboard
+│  │  │  │  ├─ DashboardActions.tsx
 │  │  │  │  ├─ DashboardClient.tsx
 │  │  │  │  └─ page.tsx
 │  │  │  ├─ employees
@@ -47,7 +98,13 @@
 │  │  │  │  ├─ HierarchyBuilderClient.tsx
 │  │  │  │  └─ page.tsx
 │  │  │  ├─ payroll
+│  │  │  │  ├─ BonusHistoryManager.tsx
 │  │  │  │  ├─ PayrollClient.tsx
+│  │  │  │  ├─ SalaryConfigurator.tsx
+│  │  │  │  ├─ SalaryTimelineManager.tsx
+│  │  │  │  └─ page.tsx
+│  │  │  ├─ permissions
+│  │  │  │  ├─ AdminPermissionClient.tsx
 │  │  │  │  └─ page.tsx
 │  │  │  ├─ profile
 │  │  │  │  └─ page.tsx
@@ -83,6 +140,8 @@
 │  │  │  │  ├─ companies
 │  │  │  │  │  ├─ [id]
 │  │  │  │  │  │  └─ route.ts
+│  │  │  │  │  ├─ logos
+│  │  │  │  │  │  └─ route.ts
 │  │  │  │  │  └─ route.ts
 │  │  │  │  ├─ dashboard
 │  │  │  │  │  └─ route.ts
@@ -91,7 +150,9 @@
 │  │  │  │  │  │  ├─ leave-balance
 │  │  │  │  │  │  │  └─ route.ts
 │  │  │  │  │  │  ├─ route.ts
-│  │  │  │  │  │  └─ salary-deductions
+│  │  │  │  │  │  ├─ salary-deductions
+│  │  │  │  │  │  │  └─ route.ts
+│  │  │  │  │  │  └─ salary-timelines
 │  │  │  │  │  │     └─ route.ts
 │  │  │  │  │  └─ route.ts
 │  │  │  │  ├─ holidays
@@ -103,12 +164,29 @@
 │  │  │  │  │  │  └─ route.ts
 │  │  │  │  │  └─ route.ts
 │  │  │  │  ├─ payroll
+│  │  │  │  │  ├─ bonus-history
+│  │  │  │  │  │  └─ route.ts
+│  │  │  │  │  ├─ lock
+│  │  │  │  │  │  └─ route.ts
 │  │  │  │  │  ├─ payslip
 │  │  │  │  │  │  └─ route.ts
 │  │  │  │  │  ├─ route.ts
+│  │  │  │  │  ├─ salaries
+│  │  │  │  │  │  ├─ [id]
+│  │  │  │  │  │  │  └─ route.ts
+│  │  │  │  │  │  └─ route.ts
 │  │  │  │  │  └─ send-email
 │  │  │  │  │     └─ route.ts
+│  │  │  │  ├─ permissions
+│  │  │  │  │  ├─ [id]
+│  │  │  │  │  │  └─ route.ts
+│  │  │  │  │  ├─ reports
+│  │  │  │  │  │  └─ route.ts
+│  │  │  │  │  └─ route.ts
 │  │  │  │  └─ reports
+│  │  │  │     ├─ attendance
+│  │  │  │     │  ├─ daily
+│  │  │  │     │  └─ matrix
 │  │  │  │     └─ route.ts
 │  │  │  ├─ approvals
 │  │  │  │  ├─ action
@@ -117,10 +195,14 @@
 │  │  │  ├─ attendance
 │  │  │  │  ├─ check-in
 │  │  │  │  │  └─ route.ts
-│  │  │  │  └─ check-out
+│  │  │  │  ├─ check-out
+│  │  │  │  │  └─ route.ts
+│  │  │  │  └─ reminder
 │  │  │  │     └─ route.ts
 │  │  │  ├─ auth
-│  │  │  │  └─ [...nextauth]
+│  │  │  │  ├─ [...nextauth]
+│  │  │  │  │  └─ route.ts
+│  │  │  │  └─ status
 │  │  │  │     └─ route.ts
 │  │  │  ├─ calendar
 │  │  │  │  └─ route.ts
@@ -138,7 +220,22 @@
 │  │  │  │  │  └─ route.ts
 │  │  │  │  ├─ leaves
 │  │  │  │  │  └─ route.ts
-│  │  │  │  └─ payslips
+│  │  │  │  ├─ letters
+│  │  │  │  │  └─ route.ts
+│  │  │  │  ├─ my-team
+│  │  │  │  │  ├─ [id]
+│  │  │  │  │  │  └─ route.ts
+│  │  │  │  │  └─ route.ts
+│  │  │  │  ├─ payslips
+│  │  │  │  │  └─ route.ts
+│  │  │  │  └─ permissions
+│  │  │  │     ├─ [id]
+│  │  │  │     │  └─ compensate
+│  │  │  │     │     └─ route.ts
+│  │  │  │     ├─ attendance-for-compensation
+│  │  │  │     │  └─ route.ts
+│  │  │  │     ├─ balance
+│  │  │  │     │  └─ route.ts
 │  │  │  │     └─ route.ts
 │  │  │  ├─ hierarchy
 │  │  │  │  ├─ reporting-chain
@@ -160,9 +257,16 @@
 │  │  │  │  ├─ [id]
 │  │  │  │  │  └─ approve
 │  │  │  │  │     └─ route.ts
-│  │  │  │  └─ apply
-│  │  │  │     └─ route.ts
+│  │  │  │  ├─ apply
+│  │  │  │  │  └─ route.ts
+│  │  │  │  └─ attachment
+│  │  │  │     └─ [id]
+│  │  │  │        └─ route.ts
 │  │  │  ├─ letters
+│  │  │  │  ├─ [id]
+│  │  │  │  │  ├─ download
+│  │  │  │  │  │  └─ route.ts
+│  │  │  │  │  └─ route.ts
 │  │  │  │  ├─ bulk-send
 │  │  │  │  │  └─ route.ts
 │  │  │  │  ├─ email-logs
@@ -176,8 +280,12 @@
 │  │  │  │     │  └─ route.ts
 │  │  │  │     └─ route.ts
 │  │  │  ├─ notifications
+│  │  │  │  ├─ register
+│  │  │  │  │  └─ route.ts
 │  │  │  │  ├─ route.ts
-│  │  │  │  └─ subscribe
+│  │  │  │  ├─ subscribe
+│  │  │  │  └─ test
+│  │  │  │     └─ route.ts
 │  │  │  ├─ payroll
 │  │  │  │  ├─ generate
 │  │  │  │  │  └─ route.ts
@@ -209,8 +317,13 @@
 │  │  │  ├─ leaves
 │  │  │  │  ├─ LeavesClient.tsx
 │  │  │  │  └─ page.tsx
+│  │  │  ├─ my-team
+│  │  │  │  └─ page.tsx
 │  │  │  ├─ payslips
 │  │  │  │  ├─ PayslipsClient.tsx
+│  │  │  │  └─ page.tsx
+│  │  │  ├─ permissions
+│  │  │  │  ├─ PermissionClient.tsx
 │  │  │  │  └─ page.tsx
 │  │  │  └─ profile
 │  │  │     └─ page.tsx
@@ -218,7 +331,9 @@
 │  │  ├─ layout.tsx
 │  │  ├─ login
 │  │  │  └─ page.tsx
-│  │  └─ page.tsx
+│  │  ├─ page.tsx
+│  │  └─ unauthorized
+│  │     └─ page.tsx
 │  ├─ auth.config.ts
 │  ├─ auth.ts
 │  ├─ components
@@ -226,25 +341,43 @@
 │  │  ├─ CompanyProvider.tsx
 │  │  ├─ CompanySwitcher.tsx
 │  │  ├─ DashboardLayoutClient.tsx
+│  │  ├─ NativePushNotifications.tsx
 │  │  ├─ NotificationSlide.tsx
 │  │  ├─ PayslipDocument.tsx
 │  │  ├─ ProfileClient.tsx
+│  │  ├─ PushNotificationInitializer.tsx
 │  │  ├─ Sidebar.tsx
 │  │  ├─ ThemeToggle.tsx
-│  │  └─ TopNav.tsx
+│  │  ├─ TopNav.tsx
+│  │  ├─ UserStatusWatcher.tsx
+│  │  ├─ WebPushInitializer.tsx
+│  │  ├─ WebPushModal.tsx
+│  │  └─ employee
 │  ├─ lib
+│  │  ├─ attendanceUtils.ts
 │  │  ├─ bulkEmailService.ts
 │  │  ├─ emailService.ts
+│  │  ├─ firebase.ts
+│  │  ├─ firebaseAdmin.ts
 │  │  ├─ generatePayslipPdf.tsx
+│  │  ├─ halfDayUtils.ts
+│  │  ├─ letterUtils.ts
 │  │  ├─ mongodb.ts
 │  │  ├─ multiTenantPlugin.ts
 │  │  ├─ payslipTemplate.ts
-│  │  └─ pdfService.tsx
+│  │  ├─ pdfService.tsx
+│  │  ├─ pushNotifications.ts
+│  │  ├─ salaryUtils.ts
+│  │  ├─ sendWebPushNotification.ts
+│  │  ├─ sessionUtils.ts
+│  │  ├─ webPushNotifications.ts
+│  │  └─ zohoWorkdrive.ts
 │  ├─ middleware.ts
 │  ├─ models
 │  │  ├─ ApprovalAuditLog.ts
 │  │  ├─ Attendance.ts
 │  │  ├─ AttendanceCorrection.ts
+│  │  ├─ BonusHistory.ts
 │  │  ├─ CompOffCredit.ts
 │  │  ├─ Company.ts
 │  │  ├─ EmployeeLeaveBalance.ts
@@ -259,15 +392,14 @@
 │  │  ├─ Notification.ts
 │  │  ├─ OvertimeRequest.ts
 │  │  ├─ Payroll.ts
+│  │  ├─ Permission.ts
+│  │  ├─ PermissionBalance.ts
+│  │  ├─ PermissionCompensation.ts
+│  │  ├─ PushToken.ts
 │  │  ├─ Shift.ts
 │  │  ├─ SystemAuditLog.ts
 │  │  ├─ User.ts
 │  │  └─ WFHRequest.ts
-│  ├─ pages
-│  │  └─ api
-│  │     └─ socket
-│  ├─ scripts
-│  │  └─ seed.ts
 │  ├─ services
 │  │  ├─ LeaveBalanceEngine.ts
 │  │  ├─ api.ts
@@ -275,6 +407,7 @@
 │  └─ types
 │     ├─ global.d.ts
 │     └─ next-auth.d.ts
-└─ tsconfig.json
+├─ tsconfig.json
+└─ vercel.json
 
 ```

@@ -34,21 +34,8 @@ export async function GET(req: NextRequest) {
       const permDate = new Date(legacy.date);
       const year = permDate.getFullYear();
       const month = permDate.getMonth() + 1;
-      let balance = await PermissionBalance.findOne({ userId: session.user.id, year, month }, null, { bypassTenant: true });
-      if (balance) {
-        const monthStart = new Date(year, month - 1, 1);
-        const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
-        const activePerms = await Permission.find({
-          userId: session.user.id,
-          date: { $gte: monthStart, $lte: monthEnd },
-          status: { $in: ['Pending Compensation', 'Partially Compensated', 'Fully Compensated', 'Approved'] }
-        }, null, { bypassTenant: true }).lean();
-
-        const totalUsed = activePerms.reduce((sum, p) => sum + (p.duration || 0), 0);
-        balance.usedMinutes = totalUsed;
-        balance.remainingMinutes = Math.max(0, balance.allowedMinutes - totalUsed);
-        await balance.save({ bypassTenant: true } as any);
-      }
+      const { syncPermissionBalance } = await import('@/lib/attendanceUtils');
+      await syncPermissionBalance(session.user.id, year, month, session.user.companyId);
     }
 
     const permissions = await Permission.find({ userId: session.user.id }, null, { bypassTenant: true })
@@ -82,14 +69,8 @@ export async function POST(req: NextRequest) {
     await dbConnect();
 
     // 1. Check if balance is available
-    let balance = await PermissionBalance.findOne({ userId: session.user.id, year, month }, null, { bypassTenant: true });
-    if (!balance) {
-      balance = await PermissionBalance.create({
-        companyId: session.user.companyId,
-        userId: session.user.id,
-        year, month, allowedMinutes: 120, usedMinutes: 0, remainingMinutes: 120
-      });
-    }
+    const { syncPermissionBalance } = await import('@/lib/attendanceUtils');
+    let balance = await syncPermissionBalance(session.user.id, year, month, session.user.companyId);
 
     if (duration > balance.remainingMinutes) {
       return Response.json({ error: `Requested duration exceeds your remaining balance for this month (${balance.remainingMinutes} mins left).` }, { status: 400 });

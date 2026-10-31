@@ -55,25 +55,18 @@ export async function POST(req: NextRequest) {
 
     const previousStatus = request.status;
     if (requestType === 'PERMISSION') {
+      if (request.status !== 'Pending Approval') {
+        return NextResponse.json({ error: `Permission request is already ${request.status.toLowerCase()}` }, { status: 400 });
+      }
+
+      const permissionDate = new Date(request.date);
+      const year = permissionDate.getFullYear();
+      const month = permissionDate.getMonth() + 1;
+
+      const { syncPermissionBalance } = await import('@/lib/attendanceUtils');
+      const balance = await syncPermissionBalance(request.userId, year, month, request.companyId);
+
       if (status === 'approved') {
-        const PermissionBalance = (await import('@/models/PermissionBalance')).default;
-        const permissionDate = new Date(request.date);
-        const year = permissionDate.getFullYear();
-        const month = permissionDate.getMonth() + 1;
-
-        let balance = await PermissionBalance.findOne({ userId: request.userId, year, month }, null, { bypassTenant: true });
-        if (!balance) {
-          balance = await PermissionBalance.create({
-            companyId: request.companyId,
-            userId: request.userId,
-            year,
-            month,
-            allowedMinutes: 120,
-            usedMinutes: 0,
-            remainingMinutes: 120
-          });
-        }
-
         if (request.duration > balance.remainingMinutes) {
           return NextResponse.json({ error: `Insufficient permission balance for employee (${balance.remainingMinutes} mins remaining).` }, { status: 400 });
         }
@@ -81,13 +74,15 @@ export async function POST(req: NextRequest) {
         request.status = 'Pending Compensation';
         request.pendingMinutes = request.duration;
         request.approvedBy = userId;
+        await request.save({ bypassTenant: true } as any);
 
-        balance.usedMinutes += request.duration;
-        balance.remainingMinutes -= request.duration;
-        await balance.save({ bypassTenant: true } as any);
+        await syncPermissionBalance(request.userId, year, month, request.companyId);
       } else {
         request.status = 'Rejected';
         request.approvedBy = userId;
+        await request.save({ bypassTenant: true } as any);
+
+        await syncPermissionBalance(request.userId, year, month, request.companyId);
       }
     } else if (requestType === 'LEAVE') {
       const { LeaveBalanceEngine } = await import('@/services/LeaveBalanceEngine');

@@ -4,7 +4,9 @@ import User from '@/models/User';
 import Shift from '@/models/Shift';
 import Leave from '@/models/Leave';
 import Permission from '@/models/Permission';
+import PermissionBalance from '@/models/PermissionBalance';
 import Holiday from '@/models/Holiday';
+import mongoose from 'mongoose';
 import { calculateHalfSession } from './halfDayUtils';
 
 export interface PermissionInterval {
@@ -265,3 +267,59 @@ export async function recalculateAttendanceForUserAndDate(userId: any, date: Dat
   await attendance.save({ bypassTenant: true } as any);
   return attendance;
 }
+
+/**
+ * Synchronizes and auto-heals the PermissionBalance for a user and month with actual approved permissions.
+ * Recalculates usedMinutes and remainingMinutes so it can never be corrupted or out of sync.
+ */
+export async function syncPermissionBalance(
+  userId: string | mongoose.Types.ObjectId,
+  year: number,
+  month: number,
+  companyId?: string | mongoose.Types.ObjectId
+) {
+  await dbConnect();
+  
+  // Date window covering the month across all timezones
+  const queryStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0) - 24 * 3600 * 1000);
+  const queryEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999) + 24 * 3600 * 1000);
+
+  const candidatePerms = await (Permission as any).find({
+    userId,
+    date: { $gte: queryStart, $lte: queryEnd },
+    status: { $in: ['Approved', 'Pending Compensation', 'Partially Compensated', 'Fully Compensated', 'approved'] }
+  }, null, { bypassTenant: true }).lean();
+
+  const activePerms = candidatePerms.filter((p: any) => {
+    const d = new Date(p.date);
+    const utcMatch = d.getUTCFullYear() === year && (d.getUTCMonth() + 1) === month;
+    const localMatch = d.getFullYear() === year && (d.getMonth() + 1) === month;
+    return utcMatch || localMatch;
+  });
+
+  const totalUsed = activePerms.reduce((sum: number, p: any) => sum + (p.duration || 0), 0);
+
+  let balance = await (PermissionBalance as any).findOne({ userId, year, month }, null, { bypassTenant: true });
+  if (!balance) {
+    if (!companyId) {
+      const user = await User.findById(userId, null, { bypassTenant: true }).lean();
+      companyId = user?.companyId;
+    }
+    balance = new PermissionBalance({
+      companyId,
+      userId,
+      year,
+      month,
+      allowedMinutes: 120,
+      usedMinutes: totalUsed,
+      remainingMinutes: Math.max(0, 120 - totalUsed)
+    });
+  } else {
+    balance.usedMinutes = totalUsed;
+    balance.remainingMinutes = Math.max(0, (balance.allowedMinutes ?? 120) - totalUsed);
+  }
+
+  await balance.save({ bypassTenant: true } as any);
+  return balance;
+}
+

@@ -28,10 +28,8 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     const year = permissionDate.getFullYear();
     const month = permissionDate.getMonth() + 1;
 
-    let balance = await PermissionBalance.findOne({ userId: permission.userId, year, month });
-    if (!balance) {
-      return Response.json({ error: 'Permission balance not found' }, { status: 400 });
-    }
+    const { syncPermissionBalance } = await import('@/lib/attendanceUtils');
+    const balance = await syncPermissionBalance(permission.userId, year, month, permission.companyId);
 
     if (status === 'Approved') {
       if (permission.duration > balance.remainingMinutes) {
@@ -39,17 +37,18 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       }
       
       permission.status = 'Pending Compensation';
+      permission.pendingMinutes = permission.duration;
       permission.approvedBy = session.user.id as any;
-      
-      balance.usedMinutes += permission.duration;
-      balance.remainingMinutes -= permission.duration;
-      await balance.save();
+      await permission.save();
+
+      await syncPermissionBalance(permission.userId, year, month, permission.companyId);
     } else {
       permission.status = 'Rejected';
       permission.approvedBy = session.user.id as any;
-    }
+      await permission.save();
 
-    await permission.save();
+      await syncPermissionBalance(permission.userId, year, month, permission.companyId);
+    }
 
     const { recalculateAttendanceForUserAndDate } = await import('@/lib/attendanceUtils');
     await recalculateAttendanceForUserAndDate(permission.userId, permission.date);

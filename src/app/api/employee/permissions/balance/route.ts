@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@/auth';
 import dbConnect from '@/lib/mongodb';
-import PermissionBalance from '@/models/PermissionBalance';
+import { syncPermissionBalance } from '@/lib/attendanceUtils';
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,27 +14,11 @@ export async function GET(req: NextRequest) {
 
     await dbConnect();
 
-    let balance = await PermissionBalance.findOne({
-      userId: session.user.id,
-      year,
-      month
-    });
-
-    if (!balance) {
-      // Auto-create balance for the month if it doesn't exist
-      balance = await PermissionBalance.create({
-        companyId: session.user.companyId,
-        userId: session.user.id,
-        year,
-        month,
-        allowedMinutes: 120,
-        usedMinutes: 0,
-        remainingMinutes: 120
-      });
-    }
+    const balance = await syncPermissionBalance(session.user.id, year, month, session.user.companyId);
 
     return Response.json({ balance }, { status: 200 });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 }
+
