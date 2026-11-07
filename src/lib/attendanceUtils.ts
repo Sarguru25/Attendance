@@ -8,6 +8,7 @@ import PermissionBalance from '@/models/PermissionBalance';
 import Holiday from '@/models/Holiday';
 import mongoose from 'mongoose';
 import { calculateHalfSession } from './halfDayUtils';
+import { isWeeklyOff as checkWeeklyOff } from './workingDays';
 
 export interface PermissionInterval {
   fromTime: string; // HH:mm
@@ -212,11 +213,7 @@ export async function recalculateAttendanceForUserAndDate(userId: any, date: Dat
   }, null, { bypassTenant: true });
 
   const shift = user.shiftId as any;
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayName = dayNames[targetDate.getUTCDay()];
-  const isWeeklyOff = shift && Array.isArray(shift.workingDays) && shift.workingDays.length > 0
-    ? !shift.workingDays.map((d: string) => d.toLowerCase()).includes(dayName.toLowerCase())
-    : targetDate.getUTCDay() === 0;
+  const isWeeklyOff = checkWeeklyOff(targetDate, shift, { useUTC: true });
 
   const { calculateDailyAttendance } = await import('./halfDayUtils');
   const calc = calculateDailyAttendance({

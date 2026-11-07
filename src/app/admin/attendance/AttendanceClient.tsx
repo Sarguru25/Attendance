@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { Search, Download, Filter, User, Edit, X, Loader2 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { api } from '@/services/api';
+import { formatShiftWorkingDays } from '@/lib/workingDays';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
@@ -299,7 +300,7 @@ export default function AttendanceClient() {
                         {record.userId?.shiftId?.shiftName || 'N/A'}
                       </span>
                       <div className="text-[10px] font-bold text-muted-foreground">
-                        {record.userId?.shiftId?.workingDays?.map((d: string) => d.slice(0, 3)).join('-') || 'N/A'}
+                        {formatShiftWorkingDays(record.userId?.shiftId)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-card-foreground">

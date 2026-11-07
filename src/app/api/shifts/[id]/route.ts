@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import dbConnect from '@/lib/mongodb';
 import Shift from '@/models/Shift';
+import { ensureWorkingDaysArray } from '@/lib/workingDays';
 
 export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   try {
@@ -10,9 +11,22 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { shiftName, workingDays, sessions, firstHalf, secondHalf, isActive } = await req.json();
+    const { shiftName, workingDays, workingDayConfig, sessions, firstHalf, secondHalf, isActive } = await req.json();
 
-    if (!shiftName || !workingDays || workingDays.length === 0 || !sessions || sessions.length === 0) {
+    const effectiveWorkingDayConfig = workingDayConfig || {
+      regularWorkingDays: (workingDays || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+        .filter((d: string) => !['Saturday', 'Sunday'].includes(d))
+        .map((d: string) => d.toUpperCase()),
+      saturdayRule: workingDays?.includes('Saturday') ? 'SECOND_SATURDAY_ONLY' : 'ALL_SATURDAYS_OFF',
+      sundayWorking: workingDays?.includes('Sunday') || false,
+      customSaturdays: [2]
+    };
+
+    const effectiveWorkingDays = workingDays && workingDays.length > 0
+      ? workingDays
+      : ensureWorkingDaysArray(effectiveWorkingDayConfig);
+
+    if (!shiftName || effectiveWorkingDays.length === 0 || !sessions || sessions.length === 0) {
       return NextResponse.json({ error: 'Missing required fields or sessions' }, { status: 400 });
     }
 
@@ -41,7 +55,8 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       id,
       { 
         shiftName, 
-        workingDays, 
+        workingDays: effectiveWorkingDays, 
+        workingDayConfig: effectiveWorkingDayConfig,
         sessions, 
         firstHalf: firstHalf || {
           startTime: sessions[0]?.startTime || '09:00',

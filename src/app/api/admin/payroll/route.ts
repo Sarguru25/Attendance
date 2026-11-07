@@ -10,6 +10,7 @@ import Leave from '@/models/Leave';
 import BonusHistory from '@/models/BonusHistory';
 import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay } from 'date-fns';
 import { getSalaryForPayrollPeriod } from '@/lib/salaryUtils';
+import { isWeeklyOff } from '@/lib/workingDays';
 
 export async function GET(req: NextRequest) {
   try {
@@ -140,11 +141,10 @@ export async function POST(req: NextRequest) {
       }
 
       employedDaysInMonth.forEach(d => {
-        const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
-        const isWeeklyOff = !workingDaysPattern.includes(dayName);
+        const isOff = isWeeklyOff(d, shift);
         const isHoliday = holidays.some(h => isSameDay(new Date(h.date), d));
 
-        if (isWeeklyOff) {
+        if (isOff) {
           weeklyOffDays++;
         } else if (isHoliday) {
           holidayDays++;
@@ -175,10 +175,9 @@ export async function POST(req: NextRequest) {
       let compOffsTaken = 0;
 
       employedDaysInMonth.forEach(d => {
-        const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
-        const isWeeklyOff = !workingDaysPattern.includes(dayName);
+        const isOff = isWeeklyOff(d, shift);
         const isHoliday = holidays.some(h => isSameDay(new Date(h.date), d));
-        const isWorkingDay = !isWeeklyOff && !isHoliday;
+        const isWorkingDay = !isOff && !isHoliday;
 
         const att = attendances.find(a => isSameDay(new Date(a.date), d));
         const leavesForDay = leaves.filter(l => {

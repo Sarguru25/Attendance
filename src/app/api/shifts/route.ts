@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import dbConnect from '@/lib/mongodb';
 import Shift from '@/models/Shift';
+import { ensureWorkingDaysArray } from '@/lib/workingDays';
 
 export async function GET() {
   try {
@@ -22,7 +23,13 @@ export async function GET() {
           ],
           firstHalf: { startTime: '07:30', endTime: '12:00' },
           secondHalf: { startTime: '12:00', endTime: '16:30' },
-          workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+          workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+          workingDayConfig: {
+            regularWorkingDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'],
+            saturdayRule: 'ALL_SATURDAYS_OFF',
+            sundayWorking: false,
+            customSaturdays: []
+          }
         },
         { 
           shiftName: 'Regular Shift', 
@@ -31,7 +38,13 @@ export async function GET() {
           ],
           firstHalf: { startTime: '09:00', endTime: '13:30' },
           secondHalf: { startTime: '13:30', endTime: '18:00' },
-          workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+          workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+          workingDayConfig: {
+            regularWorkingDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'],
+            saturdayRule: 'SECOND_SATURDAY_ONLY',
+            sundayWorking: false,
+            customSaturdays: [2]
+          }
         }
       ]);
       shifts = await Shift.find({ isActive: true });
@@ -49,9 +62,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { shiftName, workingDays, sessions, firstHalf, secondHalf } = await req.json();
+    const { shiftName, workingDays, workingDayConfig, sessions, firstHalf, secondHalf } = await req.json();
 
-    if (!shiftName || !workingDays || workingDays.length === 0 || !sessions || sessions.length === 0) {
+    const effectiveWorkingDayConfig = workingDayConfig || {
+      regularWorkingDays: (workingDays || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+        .filter((d: string) => !['Saturday', 'Sunday'].includes(d))
+        .map((d: string) => d.toUpperCase()),
+      saturdayRule: workingDays?.includes('Saturday') ? 'SECOND_SATURDAY_ONLY' : 'ALL_SATURDAYS_OFF',
+      sundayWorking: workingDays?.includes('Sunday') || false,
+      customSaturdays: [2]
+    };
+
+    const effectiveWorkingDays = workingDays && workingDays.length > 0
+      ? workingDays
+      : ensureWorkingDaysArray(effectiveWorkingDayConfig);
+
+    if (!shiftName || effectiveWorkingDays.length === 0 || !sessions || sessions.length === 0) {
       return NextResponse.json({ error: 'Missing required fields or sessions' }, { status: 400 });
     }
 
@@ -77,7 +103,8 @@ export async function POST(req: NextRequest) {
     
     const shift = await Shift.create({
       shiftName,
-      workingDays,
+      workingDays: effectiveWorkingDays,
+      workingDayConfig: effectiveWorkingDayConfig,
       sessions,
       firstHalf: firstHalf || {
         startTime: sessions[0]?.startTime || '09:00',

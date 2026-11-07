@@ -11,6 +11,7 @@ import Notification from '@/models/Notification';
 import Permission from '@/models/Permission';
 import Attendance from '@/models/Attendance';
 import User from '@/models/User';
+import { isWeeklyOff } from '@/lib/workingDays';
 
 export async function POST(req: NextRequest) {
   try {
@@ -203,12 +204,8 @@ export async function POST(req: NextRequest) {
           await attendance.save({ bypassTenant: true } as any);
 
           // Handle Comp-Off logic for Miss Punch / Correction approval
-          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-          const dayName = dayNames[attendanceDate.getUTCDay()];
           const shift = user?.shiftId as any;
-          const isWeeklyOff = shift && Array.isArray(shift.workingDays) && shift.workingDays.length > 0
-            ? !shift.workingDays.map((d: string) => d.toLowerCase()).includes(dayName.toLowerCase())
-            : attendanceDate.getUTCDay() === 0;
+          const isOff = isWeeklyOff(attendanceDate, shift, { useUTC: true });
 
           const Holiday = (await import('@/models/Holiday')).default;
           const holiday = await Holiday.findOne({
@@ -217,7 +214,7 @@ export async function POST(req: NextRequest) {
           }, null, { bypassTenant: true });
           const isHoliday = !!holiday;
 
-          if (isWeeklyOff || isHoliday) {
+          if (isOff || isHoliday) {
             const CompOffCredit = (await import('@/models/CompOffCredit')).default;
             const existingCredit = await CompOffCredit.findOne({
               $or: [

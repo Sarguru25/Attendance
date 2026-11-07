@@ -20,6 +20,7 @@ import clsx from 'clsx';
 import * as ExcelJS from 'exceljs';
 import { toast } from 'react-hot-toast';
 import { api } from '@/services/api';
+import { isWeeklyOff } from '@/lib/workingDays';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
@@ -83,14 +84,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
 
   const isDayWeeklyOff = (day: Date) => {
     const shift = data?.user?.shiftId;
-    const dayName = format(day, 'EEEE');
-
-    if (shift && Array.isArray(shift.workingDays) && shift.workingDays.length > 0) {
-      return !shift.workingDays.some((wd: string) => wd.toLowerCase() === dayName.toLowerCase());
-    }
-
-    // Default fallback if shift or workingDays not defined: Sunday is weekly off
-    return day.getDay() === 0;
+    return isWeeklyOff(day, shift, { useUTC: false });
   };
 
   const getDayDetails = (day: Date) => {
@@ -396,11 +390,7 @@ export default function AttendanceCalendar({ userId, isAdmin = false }: Props) {
           const att = exportData.attendances?.find((a: any) => a.userId === user._id && isSameDay(new Date(a.date), day));
 
           const userShift = user.shiftId as any;
-          const userWorkingDays = Array.isArray(userShift?.workingDays) && userShift.workingDays.length > 0
-            ? userShift.workingDays
-            : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-          const dayName = format(day, 'EEEE');
-          const isUserWeeklyOff = !userWorkingDays.some((wd: string) => wd.toLowerCase() === dayName.toLowerCase());
+          const isUserWeeklyOff = isWeeklyOff(day, userShift, { useUTC: false });
 
           if (att) {
             if (att.status === 'present') status = 'Present';

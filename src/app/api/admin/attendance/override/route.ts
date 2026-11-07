@@ -6,6 +6,7 @@ import Leave from '@/models/Leave';
 import Shift from '@/models/Shift';
 import { LeaveBalanceEngine } from '@/services/LeaveBalanceEngine';
 import { isLeaveTypePaid, syncLeaveToAttendance } from '@/lib/halfDayUtils';
+import { isWeeklyOff } from '@/lib/workingDays';
 
 export async function POST(req: NextRequest) {
   try {
@@ -421,10 +422,8 @@ export async function POST(req: NextRequest) {
         { new: true, upsert: true }
       );
 
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const dayName = dayNames[attendanceDate.getDay()];
       const shift = user?.shiftId as any;
-      const isWeeklyOff = shift && (!shift.workingDays || !shift.workingDays.includes(dayName));
+      const isOff = isWeeklyOff(attendanceDate, shift);
 
       const Holiday = (await import('@/models/Holiday')).default;
 
@@ -445,7 +444,7 @@ export async function POST(req: NextRequest) {
       const isHalfDay = finalStatus === 'half-day' || status === 'half-day' || (totalHours > 0 && totalHours < 6);
       const creditAmount = isHalfDay ? 0.5 : 1;
 
-      if (isWeeklyOff || !!holiday) {
+      if (isOff || !!holiday) {
         if (isPresentOrHalfDay) {
           const existingCredit = await CompOffCredit.findOne({
             $or: [

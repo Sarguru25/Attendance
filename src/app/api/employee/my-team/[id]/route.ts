@@ -6,6 +6,7 @@ import Attendance from '@/models/Attendance';
 import Leave from '@/models/Leave';
 import Permission from '@/models/Permission';
 import '@/models/Shift';
+import { isWeeklyOff } from '@/lib/workingDays';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -145,10 +146,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         continue;
       }
 
-      const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }).format(dayUtc);
-      const isWeeklyOff = workingDaysPattern.length > 0
-        ? !workingDaysPattern.some((wd: string) => wd.toLowerCase() === dayName.toLowerCase())
-        : dayUtc.getUTCDay() === 0;
+      const isOff = isWeeklyOff(dayUtc, shift, { useUTC: true });
 
       const dayLeaves = leaves.filter((l: any) => {
         const from = new Date(l.fromDate);
@@ -172,7 +170,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         continue;
       }
 
-      if (isWeeklyOff) {
+      if (isOff) {
         continue;
       }
 

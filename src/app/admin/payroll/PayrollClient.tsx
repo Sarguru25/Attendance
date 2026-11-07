@@ -8,6 +8,7 @@ import * as ExcelJS from 'exceljs';
 import { useCompany } from '@/components/CompanyProvider';
 import { api } from '@/services/api';
 import { formatDateDisplay, resolvePayslipBreakdown } from '@/lib/salaryUtils';
+import { formatShiftWorkingDays } from '@/lib/workingDays';
 import SalaryConfigurator from './SalaryConfigurator';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
@@ -508,7 +509,7 @@ export default function PayrollClient() {
                               {user?.shiftId?.shiftName || 'N/A'}
                             </span>
                             <div className="text-[10px] text-muted-foreground font-bold">
-                              {user?.shiftId?.workingDays?.map((d: string) => d.slice(0, 3)).join('-') || 'N/A'}
+                              {formatShiftWorkingDays(user?.shiftId)}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">

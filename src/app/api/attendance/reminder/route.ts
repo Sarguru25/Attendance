@@ -8,6 +8,7 @@ import Notification from '@/models/Notification';
 import Shift, { IShift } from '@/models/Shift';
 import Holiday from '@/models/Holiday';
 import { sendWebPushNotification } from '@/lib/sendWebPushNotification';
+import { isWeeklyOff as checkWeeklyOff } from '@/lib/workingDays';
 import mongoose from 'mongoose';
 
 // Ensure Shift model is loaded in Mongoose schema cache
@@ -87,10 +88,7 @@ async function processReminders({
 
     // 4. Check if today is a Weekly Off according to the employee's assigned shift
     const shift = employee.shiftId as unknown as IShift | null;
-    const isWeeklyOff =
-      shift && Array.isArray(shift.workingDays) && shift.workingDays.length > 0
-        ? !shift.workingDays.some((wd: string) => wd.toLowerCase() === dayName.toLowerCase())
-        : dayName.toLowerCase() === 'sunday';
+    const isWeeklyOff = checkWeeklyOff(todayStart, shift, { useUTC: true });
 
     if (isWeeklyOff && type === 'check-in') {
       continue; // Skip employee on weekly off

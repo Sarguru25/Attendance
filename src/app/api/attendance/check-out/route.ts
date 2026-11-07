@@ -5,6 +5,7 @@ import Attendance from '@/models/Attendance';
 import Leave from '@/models/Leave';
 import { differenceInMinutes } from 'date-fns';
 import { calculateHalfSession } from '@/lib/halfDayUtils';
+import { isWeeklyOff } from '@/lib/workingDays';
 
 export async function POST(req: NextRequest) {
   try {
@@ -192,11 +193,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Comp-off logic on checkout on weekly off / holiday
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayName = dayNames[now.getDay()];
-    const isWeeklyOff = shift && Array.isArray(shift.workingDays) && shift.workingDays.length > 0
-      ? !shift.workingDays.map((d: string) => d.toLowerCase()).includes(dayName.toLowerCase())
-      : now.getDay() === 0;
+    const isOff = isWeeklyOff(todayStart, shift, { useUTC: true });
 
     const Holiday = (await import('@/models/Holiday')).default;
     const isHoliday = await Holiday.exists({
@@ -204,7 +201,7 @@ export async function POST(req: NextRequest) {
       holidayType: { $in: ['public', 'company'] }
     });
 
-    if (isWeeklyOff || isHoliday) {
+    if (isOff || isHoliday) {
       const creditAmount = isHalfDay ? 0.5 : 1;
       const CompOffCredit = (await import('@/models/CompOffCredit')).default;
       const existingCredit = await CompOffCredit.findOne({ employeeId: userId, attendanceDate: { $gte: todayStart, $lte: todayEnd } });
